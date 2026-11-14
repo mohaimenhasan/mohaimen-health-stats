@@ -410,13 +410,7 @@ def run(apple_src: ExportSource, strava_src: ExportSource | None, root: Path, ou
     log("• DEXA")
     scans = dexa.sync(dexa_links, root / "config/dexa", offline=offline, verbose=verbose)
 
-    insights = make_insights({"daily": daily, "weight": weight, "football": football, "monthly": monthly,
-                              "dexa": scans, "phases": phase_rows, "corr": corr, "end": end,
-                              "workouts": w, "height_cm": cfg["height_cm"]})
-
     events = [dict(e) for e in cfg.get("events", [])]
-    if weight.peak_date is not None:
-        events.append({"date": weight.peak_date.date().isoformat(), "label": f"Peak {weight.peak_lb:.0f} lb"})
     for s in scans:
         events.append({"date": s["date"], "label": "DEXA scan"})
 
@@ -442,10 +436,9 @@ def run(apple_src: ExportSource, strava_src: ExportSource | None, root: Path, ou
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "export_date": end.date().isoformat(),
         "data_start": daily.index.min().date().isoformat(),
-        "profile": {"title": cfg.get("title"), "display_name": cfg.get("display_name"), "tagline": cfg.get("tagline"),
+        "profile": {"title": cfg.get("title"), "display_name": cfg.get("display_name"),
                     "height_cm": cfg["height_cm"], "height_ftin": f"{int(h_in // 12)}′{round(h_in % 12)}″"},
         "kpis": kpis,
-        "insights": insights,
         "phases": phase_rows,
         "correlations": corr,
         "events": sorted(events, key=lambda e: e["date"]),

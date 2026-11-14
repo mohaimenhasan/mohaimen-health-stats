@@ -11,8 +11,8 @@
     Football: C.green, Running: C.orange, Walking: C.blue, Strength: C.purple, Hiking: C.teal,
     Cycling: C.yellow, Swimming: C.sky, "Cardio machines": C.pink, "Other sports": "#a5d6ff", Other: C.faint,
   };
-  const PHASE_COLORS = { before: "rgba(139,152,165,0.06)", desk: "rgba(248,81,73,0.07)", cut: "rgba(63,185,80,0.08)" };
-  const PHASE_DOT = { before: C.faint, desk: C.red, cut: C.green };
+  const PHASE_COLORS = { period1: "rgba(88,166,255,0.05)", period2: "rgba(188,140,255,0.06)", period3: "rgba(57,197,207,0.06)" };
+  const PHASE_DOT = { period1: C.blue, period2: C.purple, period3: C.teal };
   const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
@@ -75,14 +75,10 @@
     if (value === "—") return "";
     return `<div class="card kpi ${cls}"><div class="label">${esc(label)}</div><div class="value">${value}${unit ? `<small>${esc(unit)}</small>` : ""}</div>${delta ? `<div class="delta">${delta}</div>` : ""}</div>`;
   }
-  function hideSection(id, msg) {
+  function hideSection(id) {
     const s = $(id);
     if (!s) return;
-    s.querySelectorAll(".grid, .card").forEach((n) => n.remove());
-    const p = document.createElement("p");
-    p.className = "lede";
-    p.textContent = msg;
-    s.appendChild(p);
+    s.hidden = true;
   }
   const safe = (name, fn) => { try { fn(); } catch (e) { console.error(`[${name}]`, e); } };
 
@@ -120,12 +116,10 @@
     const S = D.summary, k = S.kpis, p = S.profile || {};
     document.title = p.title || "Body Stats";
     $("title").textContent = p.title || "Body Stats";
-    $("tagline").textContent = p.tagline || "";
-    $("meta").textContent = `Apple Health since ${fmtDate(S.data_start)} · data through ${fmtDate(S.export_date)} · built ${fmtDate(S.generated_at.slice(0, 10))}`;
+    $("meta").textContent = `${fmtDate(S.data_start)} – ${fmtDate(S.export_date)}`;
     const fb = D.football;
     $("kpis").innerHTML = [
       kpi("Weight now", nf(k.weight_now_lb), "lb", `BMI ${nf(k.bmi_now, 1)} · ${esc(p.height_ftin || "")}`),
-      kpi("Down from peak", isNum(k.weight_lost_lb) ? `−${nf(k.weight_lost_lb)}` : "—", "lb", `peak ${nf(k.weight_peak_lb)} lb · ${fmtMonth(k.weight_peak_date)}`, "good"),
       kpi("Body fat", nf(k.body_fat_pct, 1), "%", "DEXA"),
       kpi("Football games", nf(k.football_games), "", `${nf(k.football_hours)} h · ${nf(fb.km)} km`),
       kpi("Workouts", nf(k.workouts), "", `${nf(k.workout_hours)} h total`),
@@ -133,23 +127,11 @@
       kpi("Resting HR", nf(k.rhr_now), "bpm", "last 30 days"),
       kpi("Steps", nf(k.steps_30d), "/day", "last 30 days"),
     ].join("");
-    $("insight-cards").innerHTML = (S.insights || []).map((i) => `
-      <div class="card insight ${esc(i.tone)}">
-        <div class="kicker">${esc(i.kicker)}</div>
-        <div class="headline">${esc(i.headline)}</div>
-        <p class="body">${esc(i.body)}</p>
-      </div>`).join("");
-    const c = S.counts || {};
-    $("counts").textContent = `${nf(c.apple_samples)} Apple Health samples · ${nf(c.apple_workouts)} Apple workouts + ${nf(c.strava_activities)} Strava activities → ${nf(c.workouts_after_dedupe)} unique workouts. Generated ${S.generated_at.replace("T", " ").replace("+00:00", " UTC")}.`;
   }
 
   function renderWeight(D) {
     const S = D.summary, Wt = D.weight, d = D.daily, m = D.monthly;
     const h = Wt.height_cm || S.profile.height_cm;
-    $("height-label").textContent = `${h} cm`;
-    const k = S.kpis;
-    $("weight-lede").textContent = `${nf(Wt.log[0]?.weight_lb)} lb in ${fmtMonth(Wt.log[0]?.date)} → peak ${nf(Wt.peak.weight_lb)} lb in ${fmtMonth(Wt.peak.date)} → ${nf(k.weight_now_lb)} lb now.`;
-
     const line = pairs(d.date, d.weight_lb);
     const logPts = Wt.log.map((r) => [r.date, r.weight_lb]);
     const scale = (Wt.weigh_ins || []).map((r) => [r.date, r.weight_lb]);
@@ -226,11 +208,8 @@
 
   function renderDexa(D) {
     const scans = D.dexa || [];
-    if (!scans.length) return hideSection("composition", "No DEXA scans yet.");
+    if (!scans.length) return hideSection("composition");
     const X = scans[scans.length - 1];
-    const ref = X.reference || {};
-    $("dexa-lede").textContent = `${X.provider || "DEXA"} scan on ${fmtDate(X.date)}: ${nf(X.total_lb, 1)} lb total — ${nf(X.lean_lb, 1)} lb lean, ${nf(X.fat_lb, 1)} lb fat (${nf(X.body_fat_pct, 1)}%), ${nf(X.bone_lb, 1)} lb bone. Visceral fat ${nf(X.vat_lb, 2)} lb.${X.rmr?.HTW_FFM ? ` Estimated resting metabolic rate ${nf(X.rmr.HTW_FFM)} kcal/day.` : ""}`;
-    $("dexa-ref").textContent = ref.population ? `Vs. ${nf(ref.population)} ${String(ref.gender || "").toLowerCase()}s aged ${ref.min_age}–${ref.max_age}. For fat, a lower percentile means leaner.` : "";
 
     chart("c-dexa-donut", {
       tooltip: tip({ trigger: "item", formatter: (p) => `${p.name}: <b>${nf(p.value, 1)} lb</b> (${nf(p.percent, 1)}%)` }),
@@ -296,16 +275,14 @@
 
   function renderFootball(D) {
     const F = D.football, FB = D.FB, m = D.monthly, d = D.daily;
-    if (!F || !F.games) return hideSection("football", "No football sessions found.");
-    $("football-lede").textContent = `${nf(F.games)} games since ${fmtDate(F.first_date)} — ${nf(F.hours)} hours, ${nf(F.km)} km and ${nf(F.kcal)} active kcal. Average game: ${nf(F.avg_minutes)} min at ${nf(F.avg_hr)} bpm.`;
-    const yoy = F.prev_365 ? (F.last_365 / F.prev_365 - 1) * 100 : null;
+    if (!F || !F.games) return hideSection("football");
     $("football-kpis").innerHTML = [
-      kpi("Last 12 months", nf(F.last_365), "games", isNum(yoy) ? `${signed(yoy)}% vs. previous 12 (${nf(F.prev_365)})` : ""),
-      kpi("Longest streak", nf(F.streak?.longest_weeks), "weeks", `current: ${nf(F.streak?.current_weeks)} weeks`),
-      kpi("Busiest month", nf(F.busiest_month?.games), "games", fmtMonth(F.busiest_month?.month)),
-      kpi("Busiest week", nf(F.busiest_week?.games), "games", `week of ${fmtDate(F.busiest_week?.week_of)}`),
-      kpi("Top speed (median)", nf(F.top_kmh_median, 1), "km/h", `${nf(F.gps_games)} GPS-tracked games`),
-      kpi("Sprints / game", nf(F.sprints_per_game, 1), "", `≥ 21 km/h · ${nf(F.hsr_m_per_game)} m high-speed running`),
+      kpi("Games (365 d)", nf(F.last_365)),
+      kpi("Games (previous 365 d)", nf(F.prev_365)),
+      kpi("Top speed · median", nf(F.top_kmh_median, 1), "km/h", `${nf(F.gps_games)} GPS games`),
+      kpi("Sprints / game", nf(F.sprints_per_game, 1)),
+      kpi("Distance / game", nf(F.km / F.games, 1), "km"),
+      kpi("Duration / game", nf(F.avg_minutes), "min"),
     ].join("");
 
     // calendar
@@ -393,7 +370,6 @@
     const zoneCols = [C.faint, C.blue, C.green, C.orange, C.red];
     const zt = F.zones_total_min || {};
     const ztotal = sum(["z1", "z2", "z3", "z4", "z5"].map((z) => zt[z]));
-    $("zones-note").textContent = ztotal ? `Time in each heart-rate zone, from games with dense heart-rate sampling (${nf(ztotal / 60)} h). Zones are % of max HR ${nf(D.summary.hr?.max_est)} bpm.` : "";
     const zk = ["z1", "z2", "z3", "z4", "z5"];
     if (ztotal) {
       chart("c-football-zones", {
@@ -411,18 +387,6 @@
 
     table("t-football-years", ["Year", "Games", "Hours", "Km", "Km / game", "Min / game", "kcal / game", "Avg HR", "Top speed", "Sprints / game"],
       yrs.map((y) => { const r = Y[y]; return [y, nf(r.games), nf(r.hours), nf(r.km), nf(r.km_per_game, 1), nf(r.avg_min), nf(r.kcal_per_game), nf(r.avg_hr), isNum(r.top_kmh_median) ? `${nf(r.top_kmh_median, 1)} km/h` : "—", nf(r.sprints_per_game, 1)]; }));
-
-    const R = F.records || {};
-    const rec = [
-      ["Longest game", R.longest, (v) => `${nf(v)} min`],
-      ["Farthest", R.farthest, (v) => `${nf(v, 1)} km`],
-      ["Most energy", R.most_kcal, (v) => `${nf(v)} kcal`],
-      ["Highest avg HR", R.highest_avg_hr, (v) => `${nf(v)} bpm`],
-      ["Top speed", R.top_speed, (v) => `${nf(v, 1)} km/h`],
-      ["Most sprints", R.most_sprints, (v) => nf(v)],
-      ["Biggest training load", R.biggest_load, (v) => `${nf(v)} TRIMP`],
-    ].filter((r) => r[1]);
-    $("football-records").innerHTML = rec.map(([w, r, f]) => `<li><span class="what">${esc(w)}</span><span class="val">${f(r.value)}<span class="when">${fmtDate(r.date)}</span></span></li>`).join("");
 
     const hr = FB.filter((g) => isNum(g.avg_hr));
     const hroll = rolling(hr.map((g) => g.avg_hr), 15);
@@ -557,7 +521,7 @@
   function renderLoad(D) {
     const d = D.daily;
     const start = d.date.findIndex((_, i) => isNum(d.ctl[i]) && d.ctl[i] > 1);
-    if (start < 0) return hideSection("load", "Not enough heart-rate data for a training-load model.");
+    if (start < 0) return hideSection("load");
     const dates = d.date.slice(start);
     const n = dates.length;
     const zoomStart = Math.max(0, 100 - (730 / n) * 100);
@@ -583,7 +547,7 @@
   function renderEnergy(D) {
     const m = D.monthly;
     const i0 = m.tdee_est.findIndex((v, i) => isNum(v) && isNum(m.weight_lb[i]));
-    if (i0 < 0) return hideSection("energy", "Not enough data.");
+    if (i0 < 0) return hideSection("energy");
     const months = m.month.slice(i0);
     chart("c-energy", {
       legend: legend(),
@@ -626,10 +590,9 @@
   function renderSleep(D) {
     const m = D.monthly;
     const idx = m.month.map((_, i) => i).filter((i) => isNum(m.sleep_h[i]));
-    if (idx.length < 3) return hideSection("sleep", "Not enough sleep data.");
+    if (idx.length < 3) return hideSection("sleep");
     const a = idx[0], b = idx[idx.length - 1];
     const months = m.month.slice(a, b + 1);
-    $("sleep-lede").textContent = `Sleep data covers ${fmtMonth(m.month[a])} – ${fmtMonth(m.month[b])}, mostly from iPhone bedtime ("in bed") tracking; later months don't have enough nights recorded. Average ${nf(mean(idx.map((i) => m.sleep_h[i])), 1)} h per night.`;
     chart("c-sleep", {
       grid: grid({ top: 14 }),
       tooltip: tip({ valueFormatter: (v) => `${nf(v, 1)} h` }),

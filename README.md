@@ -1,6 +1,6 @@
 # Body Stats
 
-A personal dashboard built from my Apple Health and Strava exports, plus BodySpec DEXA scans. It covers my weight journey, football (⚽️) volume and intensity, heart and fitness trends, training load, energy balance and sleep.
+A personal stats dashboard built from Apple Health and Strava exports, plus BodySpec DEXA scans. It visualizes body measurements, workouts, football, heart and fitness metrics, training load, energy balance, sleep and correlations.
 
 **Live site:** https://mohaimenhasan.github.io/mohaimen-health-stats/
 
@@ -35,7 +35,7 @@ The script copies the zips into `inbox/`, rebuilds, audits, commits `site/data` 
 Other inputs:
 - **New DEXA scan:** add the BodySpec share link as a new line in `inbox/dexa_links.txt`. The pipeline fetches each link once and caches the result in `config/dexa/`. Only a hash of the link is stored.
 - **Weight log:** append `YYYY-MM,lb` rows to `config/weight_log.csv`.
-- **Phases and life events:** edit `config/profile.json`.
+- **Comparison periods:** edit `config/profile.json`.
 
 ## Development
 
@@ -56,7 +56,7 @@ python3 -m http.server -d site 8000      # preview at http://localhost:8000
 | `workouts.py` | Merge, de-duplicate, HR zones, TRIMP load, kcal imputation |
 | `analysis.py` | Weight model, monthly table, phases, correlations, fitness and fatigue |
 | `dexa.py` | BodySpec DEXA fetch and normalisation |
-| `build.py` | Orchestrates everything and writes the insight text |
+| `build.py` | Orchestrates the pipeline and writes aggregate JSON |
 | `privacy.py` | Final audit of everything that gets published |
 
 ## Methods
