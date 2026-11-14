@@ -1,0 +1,19 @@
+# Raw personal exports — NEVER commit (repo is public)
+apple_health_export/
+StravaData/
+inbox/
+raw/
+*.zip
+*.xml
+*.gpx
+*.fit
+*.fit.gz
+*.tcx
+*.tcx.gz
+.cache/
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+.pytest_cache/

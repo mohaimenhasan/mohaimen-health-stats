@@ -1,0 +1,16 @@
+{
+  "title": "Body Stats",
+  "display_name": "Mohaimen",
+  "tagline": "Football, consistency and a lot of data.",
+  "height_cm": 178,
+  "sex": "male",
+  "timezone": "America/Los_Angeles",
+  "events": [
+    { "date": "2020-08-01", "label": "Started full-time work" }
+  ],
+  "phases": [
+    { "key": "before", "label": "Before full-time work", "start": null, "end": "2020-08-01" },
+    { "key": "desk", "label": "Desk years (weight creeping up)", "start": "2020-08-01", "end": "peak" },
+    { "key": "cut", "label": "The cut", "start": "peak", "end": null }
+  ]
+}

@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body Stats</title>
+  <meta name="description" content="Football, training and body composition — built from Apple Health, Strava and DEXA data.">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav>
+    <span class="brand">⚽ Body Stats</span>
+    <a href="#insights">Insights</a>
+    <a href="#weight">Weight</a>
+    <a href="#composition">Body comp</a>
+    <a href="#football">Football</a>
+    <a href="#heart">Heart &amp; fitness</a>
+    <a href="#activity">Activity</a>
+    <a href="#load">Training load</a>
+    <a href="#energy">Energy</a>
+    <a href="#phases">Phases</a>
+    <a href="#sleep">Sleep</a>
+    <a href="#methods">Methods</a>
+  </nav>
+
+  <main>
+    <header class="hero">
+      <h1 id="title">Body Stats</h1>
+      <p class="sub" id="tagline"></p>
+      <p class="meta" id="meta"></p>
+    </header>
+    <div id="error"></div>
+
+    <div class="grid kpis" id="kpis"></div>
+
+    <section id="insights">
+      <h2>Insights</h2>
+      <p class="lede">Generated automatically from the data on every refresh.</p>
+      <div class="grid insights" id="insight-cards"></div>
+    </section>
+
+    <section id="weight">
+      <h2>Weight journey</h2>
+      <p class="lede" id="weight-lede"></p>
+      <div class="grid cols-2">
+        <div class="card span-2">
+          <h3>Body weight</h3>
+          <p class="note">Monthly log, scale weigh-ins and DEXA. Right axis shows BMI for <span id="height-label"></span>.</p>
+          <div class="chart tall" id="c-weight"></div>
+        </div>
+        <div class="card">
+          <h3>Month-over-month change</h3>
+          <div class="chart short" id="c-weight-change"></div>
+        </div>
+        <div class="card">
+          <h3>Weight vs. weekly training hours</h3>
+          <p class="note">Monthly averages.</p>
+          <div class="chart short" id="c-weight-training"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="composition">
+      <h2>Body composition</h2>
+      <p class="lede" id="dexa-lede"></p>
+      <div class="grid cols-3">
+        <div class="card">
+          <h3>Mass breakdown</h3>
+          <div class="chart" id="c-dexa-donut"></div>
+        </div>
+        <div class="card">
+          <h3>Percentiles</h3>
+          <p class="note" id="dexa-ref"></p>
+          <div class="chart" id="c-dexa-pct"></div>
+        </div>
+        <div class="card">
+          <h3>Regional lean &amp; fat</h3>
+          <div class="chart" id="c-dexa-regional"></div>
+        </div>
+        <div class="card span-2">
+          <h3>Left / right symmetry</h3>
+          <div class="table-wrap" id="t-symmetry"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="football">
+      <h2>Football</h2>
+      <p class="lede" id="football-lede"></p>
+      <div class="grid kpis three" id="football-kpis"></div>
+      <div class="grid cols-2" style="margin-top:14px">
+        <div class="card span-2">
+          <h3>Every game</h3>
+          <p class="note">Minutes of football per day.</p>
+          <div class="chart" id="c-football-cal"></div>
+        </div>
+        <div class="card span-2">
+          <h3>Games per month</h3>
+          <div class="chart" id="c-football-monthly"></div>
+        </div>
+        <div class="card">
+          <h3>Distance per game</h3>
+          <p class="note">Each dot is a game; line is the 15-game rolling average.</p>
+          <div class="chart" id="c-football-dist"></div>
+        </div>
+        <div class="card">
+          <h3>Speed &amp; sprints (GPS games)</h3>
+          <p class="note">Best 5-second speed and sprints ≥ 21 km/h from Strava GPS tracks.</p>
+          <div class="chart" id="c-football-speed"></div>
+        </div>
+        <div class="card">
+          <h3>When I play</h3>
+          <div class="chart" id="c-football-when"></div>
+        </div>
+        <div class="card">
+          <h3>Heart-rate zones</h3>
+          <p class="note" id="zones-note"></p>
+          <div class="chart" id="c-football-zones"></div>
+        </div>
+        <div class="card span-2">
+          <h3>By year</h3>
+          <div class="table-wrap" id="t-football-years"></div>
+        </div>
+        <div class="card">
+          <h3>Records</h3>
+          <ul class="records" id="football-records"></ul>
+        </div>
+        <div class="card">
+          <h3>Average heart rate per game</h3>
+          <div class="chart" id="c-football-hr"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="heart">
+      <h2>Heart &amp; fitness</h2>
+      <p class="lede">Monthly averages from Apple Watch. Dashed line is body weight.</p>
+      <div class="grid cols-2">
+        <div class="card"><h3>VO₂ max</h3><p class="note">ml/kg/min · Apple's estimate from outdoor walks/runs</p><div class="chart short" id="c-vo2"></div></div>
+        <div class="card"><h3>Resting heart rate</h3><p class="note">bpm</p><div class="chart short" id="c-rhr"></div></div>
+        <div class="card"><h3>Heart-rate variability</h3><p class="note">SDNN, ms</p><div class="chart short" id="c-hrv"></div></div>
+        <div class="card"><h3>Walking speed</h3><p class="note">km/h</p><div class="chart short" id="c-walk"></div></div>
+        <div class="card span-2">
+          <h3>What moves with body weight?</h3>
+          <p class="note">Pearson correlation of monthly averages against body weight.</p>
+          <div class="chart short" id="c-corr"></div>
+        </div>
+        <div class="card"><h3>Weight vs. VO₂ max</h3><p class="note">One dot per month.</p><div class="chart" id="c-scatter-vo2"></div></div>
+        <div class="card"><h3>Weight vs. resting HR</h3><p class="note">One dot per month.</p><div class="chart" id="c-scatter-rhr"></div></div>
+      </div>
+    </section>
+
+    <section id="activity">
+      <h2>Activity</h2>
+      <p class="lede">Monthly averages. Steps include iPhone-only days; energy and ring stats only count days the watch was worn.</p>
+      <div class="grid cols-2">
+        <div class="card span-2"><h3>Steps &amp; active energy</h3><div class="chart" id="c-steps"></div></div>
+        <div class="card"><h3>Training hours by type</h3><div class="chart" id="c-mix"></div></div>
+        <div class="card"><h3>Activity rings closed</h3><p class="note">Share of days each ring was closed.</p><div class="chart" id="c-rings"></div></div>
+        <div class="card span-2">
+          <h3>Recent sessions</h3>
+          <div class="table-wrap" id="t-recent"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="load">
+      <h2>Training load</h2>
+      <p class="lede">Banister TRIMP from heart rate (estimated from energy where HR wasn't recorded). Fitness = 42-day load, fatigue = 7-day load, form = fitness − fatigue.</p>
+      <div class="card"><div class="chart tall" id="c-load"></div></div>
+    </section>
+
+    <section id="energy">
+      <h2>Energy balance</h2>
+      <p class="lede">Expenditure = Mifflin-St Jeor BMR + watch active energy. Intake is back-solved from the weight curve at 3,500 kcal/lb, so treat it as a rough model.</p>
+      <div class="card"><div class="chart" id="c-energy"></div></div>
+    </section>
+
+    <section id="phases">
+      <h2>Phase comparison</h2>
+      <p class="lede">Averages over each period of the timeline.</p>
+      <div class="card"><div class="table-wrap" id="t-phases"></div></div>
+    </section>
+
+    <section id="sleep">
+      <h2>Sleep</h2>
+      <p class="lede" id="sleep-lede"></p>
+      <div class="grid cols-2">
+        <div class="card"><h3>Hours per night</h3><div class="chart short" id="c-sleep"></div></div>
+        <div class="card"><h3>Bedtime &amp; wake time</h3><div class="chart short" id="c-bedtime"></div></div>
+      </div>
+    </section>
+
+    <footer id="methods">
+      <h3>Methods</h3>
+      <ul>
+        <li>Weight: self-reported monthly log, plus scale entries in Apple Health and DEXA. Daily values are interpolated.</li>
+        <li>Workouts: Apple Health and Strava are merged; overlapping sessions recorded by multiple apps are de-duplicated (Apple Watch preferred). Sessions without energy data (e.g. Strava-only recordings) get an estimate from heart rate, fitted on my own sessions of the same type (shown with ~).</li>
+        <li>Local times use the time zone of the nearest Apple Watch workout, since the Health export stores everything in the exporting phone's offset.</li>
+        <li>Max HR is estimated from the 99.9th percentile of in-workout heart rate. Zones are 60/70/80/90% of max HR and are only computed when HR sampling is dense.</li>
+        <li>Football speed metrics come from Strava GPX tracks only (Apple Watch soccer routes lack per-point timing). Speeds use displacement over a 2-second window with plausibility filters; GPS still overestimates short bursts.</li>
+        <li>Correlations are monthly and observational — they don't imply causation.</li>
+      </ul>
+      <h3>Privacy</h3>
+      <ul>
+        <li>Only aggregate numbers are published. No GPS coordinates, locations, contacts, clinical records or birth date leave the build machine.</li>
+      </ul>
+      <p id="counts"></p>
+    </footer>
+  </main>
+
+  <script src="vendor/echarts.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
