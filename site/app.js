@@ -1,4 +1,7 @@
-/* Mohaimen's Fitness Stats: renders site/data/*.json with ECharts for the selected date range. */
+import { sportLabel, sportOptions, selectWorkouts, trainingLoad, trainingSummary, recoveryPairs, linearFit } from "./fitness.mjs?v=my-fitness-1";
+import { helpButton, initHelp, renderHelp } from "./help.mjs?v=my-fitness-1";
+
+/* My Fitness: date-based health measurements and sport-filtered workouts. */
 (() => {
   "use strict";
 
@@ -14,7 +17,6 @@
   };
   const PHASE_FILL = { period1: "rgba(88,166,255,0.05)", period2: "rgba(188,140,255,0.06)", period3: "rgba(57,197,207,0.06)" };
   const PHASE_DOT = { period1: C.blue, period2: C.purple, period3: C.teal };
-  const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
   // Mirrors healthstats/analysis.py (monthly_table, correlations) so ranges aggregate the same way.
@@ -24,10 +26,16 @@
   const CORR_TARGETS = [
     ["rhr", "Resting heart rate"], ["hrv", "HRV (SDNN)"], ["vo2max", "VO₂ max"], ["walking_speed_kmh", "Walking speed"],
     ["step_length_cm", "Step length"], ["walking_hr", "Walking heart rate"], ["steps", "Daily steps"],
-    ["active_kcal", "Active calories"], ["football_games", "Football games"], ["sleep_h", "Sleep"],
+    ["active_kcal", "Active calories"], ["workouts", "Workout sessions"], ["sleep_h", "Sleep"],
   ];
   const KCAL_PER_LB = 3500;
   const PRESET_MONTHS = { "1m": 1, "3m": 3, "6m": 6, "1y": 12, "2y": 24, "5y": 60 };
+  const KPI_HELP = {
+    Weight: "weight", "Weight change": "weight-change", "Body fat": "composition",
+    "VO₂ max": "vo2", "Resting HR": "rhr", Steps: "daily", Sleep: "sleep",
+    "Training / week": "volume", "Sessions / week": "volume",
+    "Active weeks": "consistency", "Longest streak": "consistency", "High intensity": "intensity",
+  };
 
   // ---------------------------------------------------------------- helpers
   const $ = (id) => document.getElementById(id);
@@ -37,7 +45,6 @@
   const signed = (v, d = 0) => (isNum(v) ? (v > 0 ? "+" : v < 0 ? "−" : "") + nf(Math.abs(v), d) : "—");
   const sum = (a) => a.reduce((s, v) => s + (isNum(v) ? v : 0), 0);
   const mean = (a) => { const v = a.filter(isNum); return v.length ? sum(v) / v.length : null; };
-  const median = (a) => { const v = a.filter(isNum).sort((x, y) => x - y); if (!v.length) return null; const m = v.length >> 1; return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2; };
   const pairs = (xs, ys) => xs.map((x, i) => [x, ys[i]]).filter((p) => isNum(p[1]));
   const rolling = (vals, n) => vals.map((_, i) => mean(vals.slice(Math.max(0, i - n + 1), i + 1)));
   const firstIdx = (a) => a.findIndex(isNum);
@@ -105,7 +112,8 @@
     if (height) el.style.height = `${height}px`; else el.style.removeProperty("height");
     let c = instances.get(id);
     if (!c) { c = echarts.init(el, null, { renderer: "canvas" }); instances.set(id, c); }
-    const title = el.closest(".card")?.querySelector("h3")?.textContent || el.closest("section")?.querySelector("h2")?.textContent || "";
+    const heading = el.closest(".card")?.querySelector("h3") || el.closest("section")?.querySelector("h2");
+    const title = heading?.firstChild?.textContent || "";
     c.setOption({
       backgroundColor: "transparent", textStyle: { color: C.muted, fontFamily: FONT }, animation: false,
       aria: { enabled: true, label: { description: `${title} chart` } }, ...option,
@@ -121,11 +129,17 @@
   }
   function kpi(label, value, unit = "", sub = "") {
     if (value === "—") return "";
-    return `<div class="card kpi"><div class="label">${esc(label)}</div><div class="value">${value}${unit ? `<small>${esc(unit)}</small>` : ""}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
+    return `<div class="card kpi"><div class="label">${esc(label)}${helpButton(KPI_HELP[label])}</div><div class="value">${value}${unit ? `<small>${esc(unit)}</small>` : ""}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
   }
   const hideSection = (id) => { $(id).hidden = true; };
   const hideCard = (id) => { const c = $(id)?.closest(".card"); if (c) c.hidden = true; };
-  const safe = (name, fn) => { try { fn(); } catch (e) { console.error(`[${name}]`, e); } };
+  const safe = (name, fn) => {
+    try { fn(); } catch (e) {
+      console.error(`[${name}]`, e);
+      $("error").hidden = false;
+      $("error").textContent = `Chart unavailable · ${name}`;
+    }
+  };
 
   // ---------------------------------------------------------------- data
   let D;
@@ -139,22 +153,28 @@
     }));
     const wk = out.workouts;
     out.W = wk.rows.map((r) => Object.fromEntries(wk.columns.map((c, i) => [c, r[i]])));
+    out.sports = sportOptions(out.W);
+    out.loads = new Map([["all", out.daily]]);
     out.start = out.daily.date[0];
     out.end = out.daily.date[out.daily.date.length - 1];
     return out;
   }
 
-  function makeRange(from, to) {
+  function makeRange(from, to, sport) {
     const d = D.daily, n = d.date.length;
     const clamp = (i) => Math.min(n - 1, Math.max(0, i));
     const i0 = clamp(daysBetween(D.start, from)), i1 = clamp(daysBetween(D.start, to));
     const span = i1 - i0 + 1;
     const inR = (s) => s >= from && s <= to;
-    const W = D.W.filter((w) => inR(w.date));
+    const selection = D.sports.find((s) => s.value === sport);
+    const selected = selectWorkouts(D.W, selection);
+    const W = selected.filter((w) => inR(w.date));
+    if (!D.loads.has(sport)) D.loads.set(sport, trainingLoad(selected, d.date));
+    const load = D.loads.get(sport);
     return {
-      from, to, i0, i1, span, inR, W, FB: W.filter((w) => w.category === "Football"),
+      from, to, i0, i1, span, inR, W, sport, sportLabel: selection.label,
       unit: span <= 62 ? "day" : span <= 270 ? "week" : "month",
-      col: (k) => (d[k] || []).slice(i0, i1 + 1),
+      col: (k) => (load[k] || d[k] || []).slice(i0, i1 + 1),
       dates: d.date.slice(i0, i1 + 1),
     };
   }
@@ -195,17 +215,12 @@
     });
 
     const zeros = () => keys.map(() => 0);
-    A.workouts = zeros(); A.workout_min = zeros(); A.football_min = zeros(); A.football_games = zeros(); A.football_km = zeros();
+    A.workouts = zeros(); A.workout_min = zeros();
     for (const w of R.W) {
       const j = pos.get(U.key(w.date));
       if (j === undefined) continue;
       A.workouts[j] += 1;
       A.workout_min[j] += w.duration_min || 0;
-      if (w.category === "Football") {
-        A.football_games[j] += 1;
-        A.football_min[j] += w.duration_min || 0;
-        A.football_km[j] += w.distance_km || 0;
-      }
     }
     A.implied_intake_kcal = keys.map((_, j) => (A.days_with_watch[j] >= Math.max(1, 0.65 * A.days[j]) && isNum(A.tdee_est[j]) && isNum(A.weight_change_lb[j])
       ? A.tdee_est[j] + (A.weight_change_lb[j] * KCAL_PER_LB) / A.days[j] : null));
@@ -221,13 +236,8 @@
       if (!ys0) continue;
       const xs = [], ys = [];
       A.weight_lb.forEach((w, j) => { if (ok[j] && isNum(w) && isNum(ys0[j])) { xs.push(w); ys.push(ys0[j]); } });
-      if (xs.length < 8) continue;
-      const mx = mean(xs), my = mean(ys);
-      let sxy = 0, sxx = 0, syy = 0;
-      xs.forEach((x, i) => { sxy += (x - mx) * (ys[i] - my); sxx += (x - mx) ** 2; syy += (ys[i] - my) ** 2; });
-      if (!sxx || !syy) continue;
-      const slope = sxy / sxx;
-      out.push({ metric: col, label, r: sxy / Math.sqrt(sxx * syy), n: xs.length, slope, intercept: my - slope * mx, per_10lb: slope * 10 });
+      const fit = linearFit(xs.map((x, i) => [x, ys[i]]));
+      if (fit) out.push({ metric: col, label, ...fit, per_10lb: fit.slope * 10 });
     }
     return out;
   }
@@ -250,7 +260,6 @@
     const scan = scansIn(R).pop();
     const vo2 = R.col("vo2max");
     const vo2Recent = mean(vo2.slice(-60)) ?? vo2.filter(isNum).pop();
-    const hours = (ws) => sum(ws.map((w) => w.duration_min)) / 60;
     const denseMean = (col) => {
       const v = R.col(col).filter(isNum);
       return v.length >= (SPARSE_MIN[col] || 1) ? mean(v) : null;
@@ -259,8 +268,6 @@
       kpi("Weight", nf(w1, 1), "lb", isNum(w1) ? `BMI ${nf(lbToBmi(w1, p.height_cm), 1)} · ${esc(p.height_ftin || "")}` : ""),
       wl.length > 1 ? kpi("Weight change", signed(w1 - w0, 1), "lb", `${nf(w0, 1)} → ${nf(w1, 1)} lb`) : "",
       scan ? kpi("Body fat", nf(scan.body_fat_pct, 1), "%", `DEXA · ${fmtDate(scan.date)}`) : "",
-      kpi("Football games", nf(R.FB.length), "", `${nf(hours(R.FB))} h · ${nf(sum(R.FB.map((g) => g.distance_km)))} km`),
-      kpi("Workouts", nf(R.W.length), "", `${nf(hours(R.W))} h`),
       kpi("VO₂ max", nf(vo2Recent, 1), "ml/kg/min", "60-day mean"),
       kpi("Resting HR", nf(denseMean("rhr")), "bpm", "mean"),
       kpi("Steps", nf(mean(R.col("steps"))), "/day", "mean"),
@@ -329,7 +336,7 @@
 
     const perWeek = A.unit !== "day";
     const hrs = (mins) => mins.map((v, j) => (perWeek ? v / 60 / (A.days[j] / 7) : v / 60));
-    const fb = hrs(A.football_min), all_ = hrs(A.workout_min);
+    const hours = hrs(A.workout_min);
     chart("c-weight-training", {
       legend: legend(),
       grid: grid(),
@@ -337,8 +344,7 @@
       xAxis: bucketAxis(A, A.labels),
       yAxis: [valAxis({ name: perWeek ? "h/week" : "h", scale: false }), valAxis({ name: "lb", splitLine: { show: false } })],
       series: [
-        { name: "Football", type: "bar", stack: "h", data: fb, itemStyle: { color: C.green }, barMaxWidth: 12 },
-        { name: "Other training", type: "bar", stack: "h", data: all_.map((v, j) => Math.max(0, v - fb[j])), itemStyle: { color: C.purple }, barMaxWidth: 12 },
+        { name: R.sport === "all" ? "Training" : R.sportLabel, type: "bar", data: hours, itemStyle: { color: C.green }, barMaxWidth: 12 },
         { name: "Weight", type: "line", yAxisIndex: 1, data: A.weight_lb, showSymbol: false, smooth: 0.3, lineStyle: { color: C.blue, width: 2 }, itemStyle: { color: C.blue } },
       ],
     });
@@ -412,135 +418,98 @@
     else hideCard("t-symmetry");
   }
 
-  function footballYears(FB) {
-    const out = {};
-    for (const g of FB) (out[g.date.slice(0, 4)] ||= []).push(g);
-    return Object.keys(out).sort().map((y) => {
-      const gs = out[y], gps = gs.filter((g) => isNum(g.top_kmh));
-      return [y, nf(gs.length), nf(sum(gs.map((g) => g.duration_min)) / 60), nf(sum(gs.map((g) => g.distance_km))),
-        nf(mean(gs.map((g) => g.distance_km)), 1), nf(mean(gs.map((g) => g.duration_min))), nf(mean(gs.map((g) => g.active_kcal))),
-        nf(mean(gs.map((g) => g.avg_hr))), isNum(median(gps.map((g) => g.top_kmh))) ? `${nf(median(gps.map((g) => g.top_kmh)), 1)} km/h` : "—",
-        nf(mean(gps.map((g) => g.sprints)), 1)];
-    });
-  }
-
-  function renderFootball(R, A) {
-    const FB = R.FB;
-    if (!FB.length) return hideSection("football");
-    const gps = FB.filter((g) => isNum(g.top_kmh));
-    $("football-kpis").innerHTML = [
-      kpi("Games", nf(FB.length)),
-      kpi("Games / month", nf((FB.length / R.span) * 30.44, 1)),
-      kpi("Distance / game", nf(mean(FB.map((g) => g.distance_km)), 1), "km"),
-      kpi("Duration / game", nf(mean(FB.map((g) => g.duration_min))), "min"),
-      kpi("Avg HR / game", nf(mean(FB.map((g) => g.avg_hr))), "bpm"),
-      kpi("Top speed · median", nf(median(gps.map((g) => g.top_kmh)), 1), "km/h", `${nf(gps.length)} GPS games`),
-      kpi("Sprints / game", nf(mean(gps.map((g) => g.sprints)), 1)),
+  function renderTraining(R, A) {
+    const sessions = R.W;
+    const S = trainingSummary(sessions, R.from, R.to);
+    $("training-kpis").innerHTML = [
+      kpi("Training / week", nf(S.hoursPerWeek, 1), "h", `${nf(S.hours)} h · ${esc(R.sportLabel)}`),
+      kpi("Sessions / week", nf(S.sessionsPerWeek, 1), "", `${nf(S.sessions)} sessions`),
+      kpi("Active weeks", nf(S.activeWeekPct), "%", `${S.activeWeeks} / ${S.weeks.length} weeks`),
+      kpi("Longest streak", nf(S.longestStreak), "weeks"),
+      kpi("High intensity", nf(S.highIntensityPct), "%", `Z4 + Z5 · ${nf(S.zoneMinutes / 60, 1)} h HR`),
     ].join("");
-
-    // calendar: one row per year, cell width shared so partial years line up
-    const played = pairs(R.dates, R.col("football_min")).filter((p) => p[1] > 0);
-    const years = []; for (let y = +R.to.slice(0, 4); y >= +R.from.slice(0, 4); y--) years.push(y);
-    const cellH = 13, perYear = cellH * 7 + 44;
-    chart("c-football-cal", {
-      tooltip: { formatter: (p) => `${fmtDate(p.value[0])}<br><b>${nf(p.value[1])} min</b>`, backgroundColor: C.tip, borderColor: C.border, textStyle: { color: C.text, fontSize: 12 }, transitionDuration: 0 },
-      visualMap: { show: false, min: 0, max: 150, inRange: { color: ["#0e4429", "#006d32", "#26a641", "#39d353"] } },
-      calendar: years.map((y, i) => {
-        const a = maxStr(R.from, `${y}-01-01`), b = minStr(R.to, `${y}-12-31`);
-        const weeks = Math.ceil((daysBetween(a, b) + 1 + weekday(a)) / 7);
-        return {
-          range: [a, b], top: 28 + i * perYear, left: 46, width: `${Math.min(92, (weeks / 53) * 92)}%`, cellSize: ["auto", cellH],
-          itemStyle: { color: C.tip, borderColor: C.card, borderWidth: 2 }, splitLine: { show: false },
-          yearLabel: { show: true, position: "left", color: C.muted, fontSize: 13, margin: 30 },
-          monthLabel: { color: C.faint, fontSize: 10, nameMap: "en" }, dayLabel: { firstDay: 1, nameMap: ["S", "M", "T", "W", "T", "F", "S"], color: C.faint, fontSize: 9 },
-        };
-      }),
-      series: years.map((y, i) => ({ type: "heatmap", coordinateSystem: "calendar", calendarIndex: i, data: played.filter((p) => p[0].startsWith(String(y))) })),
-    }, 28 + years.length * perYear - 18);
-
-    // games per bucket, starting at the first bucket with a game
-    $("h-football-games").textContent = `Games / ${UNITS[A.unit].name}`;
-    const gi = A.football_games.findIndex((v) => v > 0);
-    chart("c-football-games", {
-      legend: legend(),
-      grid: grid(),
-      tooltip: tip(),
-      xAxis: bucketAxis(A, A.labels.slice(gi)),
-      yAxis: [valAxis({ name: "games", scale: false, minInterval: 1 }), valAxis({ name: "km", scale: false, splitLine: { show: false } })],
+    $("h-workouts").textContent = R.sport === "all" ? "Training patterns" : `${R.sportLabel} · patterns`;
+    $("workout-empty").hidden = sessions.length > 0;
+    $("workout-details").hidden = sessions.length === 0;
+    $("reset-sport").textContent = R.sport === "all" ? "All dates" : "All sports";
+    if (!sessions.length) return;
+    $("h-workout-sessions").textContent = `Training volume / ${UNITS[A.unit].name}`;
+    chart("c-workout-sessions", {
+      legend: legend(), grid: grid(), tooltip: tip({ valueFormatter: (v) => nf(v, 1) }),
+      xAxis: bucketAxis(A, A.labels),
+      yAxis: [valAxis({ name: "sessions", scale: false, minInterval: 1 }), valAxis({ name: "hours", scale: false, splitLine: { show: false } })],
       series: [
-        { name: "Games", type: "bar", data: A.football_games.slice(gi), itemStyle: { color: C.green, borderRadius: [3, 3, 0, 0] }, barMaxWidth: 14 },
-        { name: "Distance (km)", type: "line", yAxisIndex: 1, data: A.football_km.slice(gi).map((v) => +v.toFixed(1)), showSymbol: false, smooth: 0.3, lineStyle: { color: C.blue, width: 1.5 }, itemStyle: { color: C.blue } },
+        { name: "Sessions", type: "bar", data: A.workouts, itemStyle: { color: C.blue }, barMaxWidth: 14 },
+        { name: "Hours", type: "line", yAxisIndex: 1, data: A.workout_min.map((v) => v / 60), showSymbol: false, lineStyle: { color: C.teal, width: 2 }, itemStyle: { color: C.teal } },
       ],
     });
-
-    const perGame = (id, list, key, color, unit, digits, symbol) => {
-      if (!list.length) return hideCard(id);
-      const roll = rolling(list.map((g) => g[key]), 15);
-      chart(id, {
-        grid: grid({ top: 14 }),
-        tooltip: tip({ trigger: "item", formatter: (p) => `${fmtDate(p.value[0])}<br><b>${nf(p.value[1], digits)} ${unit}</b>${p.seriesName === "Rolling" ? " · 15-game mean" : ` · ${nf(list[p.dataIndex].duration_min)} min`}` }),
-        xAxis: timeAxis(),
-        yAxis: valAxis({ name: unit, scale: symbol !== "zero" }),
-        series: [
-          { name: "Game", type: "scatter", data: list.map((g) => [g.date, g[key]]), symbolSize: 5, itemStyle: { color, opacity: 0.45 } },
-          { name: "Rolling", type: "line", data: list.map((g, i) => [g.date, roll[i]]), showSymbol: false, lineStyle: { color: C.text, width: 2 }, itemStyle: { color: C.text } },
-        ],
-      });
-    };
-    perGame("c-football-dist", FB.filter((g) => isNum(g.distance_km) && g.distance_km > 0.3), "distance_km", C.green, "km", 2, "zero");
-    perGame("c-football-hr", FB.filter((g) => isNum(g.avg_hr)), "avg_hr", C.red, "bpm", 0);
-
-    if (gps.length) {
-      chart("c-football-speed", {
-        legend: legend(),
-        grid: grid(),
-        tooltip: tip({ trigger: "item", formatter: (p) => { const g = gps[p.dataIndex]; return `${fmtDate(g.date)}<br>Top speed <b>${nf(g.top_kmh, 1)} km/h</b><br>${nf(g.sprints)} sprints · ${nf(g.hsr_m)} m high-speed<br>${nf(g.gps_km, 2)} km in ${nf(g.duration_min)} min`; } }),
-        xAxis: timeAxis(),
-        yAxis: [valAxis({ name: "km/h" }), valAxis({ name: "sprints", scale: false, splitLine: { show: false } })],
-        series: [
-          { name: "Top speed", type: "scatter", data: gps.map((g) => [g.date, g.top_kmh]), symbolSize: 7, itemStyle: { color: C.orange } },
-          { name: "Sprints", type: "scatter", yAxisIndex: 1, data: gps.map((g) => [g.date, g.sprints]), symbol: "triangle", symbolSize: 6, itemStyle: { color: C.purple, opacity: 0.7 } },
-        ],
-      });
-    } else hideCard("c-football-speed");
-
-    // weekday x hour
-    const heat = Array.from({ length: 7 }, () => new Array(24).fill(0));
-    for (const g of FB) if (isNum(g.weekday) && isNum(g.hour)) heat[g.weekday][g.hour] += 1;
-    const used = []; heat.forEach((row) => row.forEach((v, hh) => { if (v > 0) used.push(hh); }));
-    const h0 = Math.max(0, Math.min(...used) - 1), h1 = Math.min(23, Math.max(...used) + 1);
-    const hrs = []; for (let hh = h0; hh <= h1; hh++) hrs.push(hh);
-    const hdata = []; let hmax = 1;
-    heat.forEach((row, wd) => hrs.forEach((hh, j) => { hdata.push([j, wd, row[hh]]); hmax = Math.max(hmax, row[hh]); }));
-    chart("c-football-when", {
-      grid: grid({ top: 10, bottom: 10 }),
-      tooltip: { formatter: (p) => `${WEEKDAYS[p.value[1]]} ${clock(hrs[p.value[0]])}–${clock(hrs[p.value[0]] + 1)}<br><b>${p.value[2]} games</b>`, backgroundColor: C.tip, borderColor: C.border, textStyle: { color: C.text, fontSize: 12 }, transitionDuration: 0 },
-      xAxis: catAxis(hrs.map((x) => (x === 0 ? "12a" : x < 12 ? `${x}a` : x === 12 ? "12p" : `${x - 12}p`)), { axisLabel: { color: C.muted, fontSize: 10 } }),
-      yAxis: catAxis(WEEKDAYS, { inverse: true }),
-      visualMap: { show: false, min: 0, max: hmax, inRange: { color: [C.tip, "#0e4429", "#26a641", "#39d353"] } },
-      series: [{ type: "heatmap", data: hdata, itemStyle: { borderColor: C.card, borderWidth: 2, borderRadius: 3 } }],
+    const consistency = S.weeks.map((_, i) => {
+      const window = S.weeks.slice(Math.max(0, i - 7), i + 1);
+      return [S.weeks[i].date, window.filter((w) => w.sessions > 0).length / window.length * 100];
+    });
+    chart("c-consistency", {
+      grid: grid({ top: 14 }), tooltip: tip({ valueFormatter: (v) => `${nf(v)}%` }),
+      xAxis: timeAxis(), yAxis: valAxis({ min: 0, max: 100, axisLabel: { ...AX.axisLabel, formatter: "{value}%" } }),
+      series: [{ name: "Active weeks", type: "line", data: consistency, showSymbol: false, step: "end", lineStyle: { color: C.blue, width: 2 }, itemStyle: { color: C.blue } }],
     });
 
-    const zk = ["z1", "z2", "z3", "z4", "z5"];
-    const zoneNames = ["Z1 easy", "Z2 aerobic", "Z3 tempo", "Z4 threshold", "Z5 max"];
+    const positions = new Map(A.keys.map((key, i) => [key, i]));
+    const grouped = A.keys.map(() => []);
+    for (const w of sessions) grouped[positions.get(UNITS[A.unit].key(w.date))].push(w);
+    const zones = grouped.map((ws) => ["z1", "z2", "z3", "z4", "z5"].map((key) => sum(ws.map((w) => w[key]))));
     const zoneCols = [C.line, C.blue, C.green, C.orange, C.red];
-    const zt = Object.fromEntries(zk.map((z) => [z, sum(FB.map((g) => g[z]))]));
-    const ztotal = sum(zk.map((z) => zt[z]));
-    if (ztotal) {
-      chart("c-football-zones", {
-        grid: grid({ top: 6, right: 70 }),
-        tooltip: tip({ trigger: "item", formatter: (p) => `${zoneNames[4 - p.dataIndex]}<br><b>${nf(p.value, 1)}%</b> · ${nf(zt[zk[4 - p.dataIndex]] / 60, 1)} h` }),
-        xAxis: valAxis({ min: 0, scale: false, axisLabel: { formatter: "{value}%", color: C.faint } }),
-        yAxis: catAxis(zoneNames.slice().reverse()),
-        series: [{
-          type: "bar", barWidth: 18,
-          label: { show: true, position: "right", color: C.text, formatter: (p) => `${nf(p.value)}% · ${nf(zt[zk[4 - p.dataIndex]] / 60)} h` },
-          data: zk.slice().reverse().map((z, i) => ({ value: (zt[z] / ztotal) * 100, itemStyle: { color: zoneCols[4 - i], borderRadius: 3 } })),
-        }],
+    if (S.zoneMinutes) {
+      chart("c-intensity", {
+        legend: legend(), grid: grid(), tooltip: tip({ valueFormatter: (v) => `${nf(v, 1)}%` }),
+        xAxis: bucketAxis(A, A.labels), yAxis: valAxis({ min: 0, max: 100, axisLabel: { ...AX.axisLabel, formatter: "{value}%" } }),
+        series: zoneCols.map((color, i) => ({ name: `Z${i + 1}`, type: "bar", stack: "zones", barMaxWidth: 16,
+          itemStyle: { color }, data: zones.map((values) => sum(values) ? values[i] / sum(values) * 100 : null) })),
       });
-    } else hideCard("c-football-zones");
+    } else hideCard("c-intensity");
 
-    table("t-football-years", ["Year", "Games", "Hours", "Km", "Km / game", "Min / game", "kcal / game", "Avg HR", "Top speed", "Sprints / game"], footballYears(FB));
+    const moving = (ws) => ws.filter((w) => w.distance_km > 0 && w.duration_min > 0);
+    const rate = (ws) => ws.length ? sum(ws.map((w) => w.distance_km)) / (sum(ws.map((w) => w.duration_min)) / 60) : null;
+    if (new Set(sessions.map((w) => w.activity)).size === 1 && moving(sessions).length) {
+      chart("c-efficiency", {
+        legend: legend(), grid: grid(), tooltip: tip({ valueFormatter: (v) => nf(v, 1) }),
+        xAxis: bucketAxis(A, A.labels),
+        yAxis: [valAxis({ name: "km/h" }), valAxis({ name: "bpm", splitLine: { show: false } })],
+        series: [
+          { name: "Distance / hour", type: "line", data: grouped.map((ws) => rate(moving(ws))), showSymbol: false, lineStyle: { color: C.blue }, itemStyle: { color: C.blue } },
+          { name: "Average HR", type: "line", yAxisIndex: 1, data: grouped.map((ws) => mean(moving(ws).map((w) => w.avg_hr))), showSymbol: false, lineStyle: { color: C.orange }, itemStyle: { color: C.orange } },
+        ],
+      });
+    } else hideCard("c-efficiency");
+    const activities = [...new Set(sessions.map((w) => w.activity))];
+    const rows = activities.map((activity) => {
+      const ws = sessions.filter((w) => w.activity === activity);
+      const stats = trainingSummary(ws, R.from, R.to);
+      return { hours: stats.hours, cells: [esc(sportLabel(activity)), nf(ws.length), nf(stats.hours, 1), `${nf(stats.activeWeekPct)}%`,
+        nf(stats.sessionsPerWeek, 1), nf(mean(ws.map((w) => w.duration_min))), nf(rate(moving(ws)), 1), nf(mean(ws.map((w) => w.avg_hr))),
+        isNum(stats.highIntensityPct) ? `${nf(stats.highIntensityPct)}%` : "—"] };
+    }).sort((a, b) => b.hours - a.hours);
+    table("t-sports", ["Sport", "Sessions", "Hours", "Active weeks", "Sessions / week", "Min / session", "Km / hour", "Avg HR", "Z4 + Z5"], rows.map((r) => r.cells));
+    renderMix(R);
+  }
+
+  function renderRecovery(R) {
+    const points = recoveryPairs(R.W, D.daily, R.from, R.to);
+    $("recovery-empty").hidden = points.length >= 8;
+    $("c-recovery").hidden = points.length < 8;
+    if (points.length < 8) return;
+    const fit = linearFit(points.map((p) => [p.load, p.delta]));
+    const xs = points.map((p) => p.load), x0 = Math.min(...xs), x1 = Math.max(...xs);
+    chart("c-recovery", {
+      legend: legend(), grid: grid(),
+      tooltip: tip({ trigger: "item", formatter: (p) => `${fmtDate(p.data.date)}<br>Load ${nf(p.value[0])} TRIMP<br>Next-day RHR ${nf(p.data.rhr, 1)} bpm<br>28-day baseline ${nf(p.data.baseline, 1)} bpm<br>Difference ${signed(p.value[1], 1)} bpm` }),
+      xAxis: valAxis({ name: "TRIMP", min: 0 }), yAxis: valAxis({ name: "RHR Δ · bpm" }),
+      series: [
+        { name: `Paired days · n ${points.length}`, type: "scatter", symbolSize: 6, itemStyle: { color: C.blue, opacity: 0.65 },
+          data: points.map((p) => ({ value: [p.load, p.delta], ...p })) },
+        ...(fit ? [{ name: `Fit · r ${nf(fit.r, 2)}`, type: "line", silent: true, showSymbol: false, lineStyle: { color: C.text, type: "dashed" },
+          itemStyle: { color: C.text }, data: [[x0, fit.intercept + fit.slope * x0], [x1, fit.intercept + fit.slope * x1]] }] : []),
+      ],
+    });
   }
 
   function metricVsWeight(A, id, key, color, digits, label) {
@@ -605,7 +574,30 @@
     scatterVsWeight(R, A, "c-scatter-rhr", "rhr", "RHR");
   }
 
-  function renderActivity(R, A) {
+  function renderMix(R) {
+    const W = R.W;
+    if (W.length) {
+      const mixUnit = R.span > 730 ? "year" : R.unit === "day" ? "week" : R.unit;
+      const U = UNITS[mixUnit];
+      const keys = [...new Set(W.map((w) => U.key(w.date)))].sort();
+      const totals = {};
+      for (const w of W) totals[w.category] = (totals[w.category] || 0) + (w.duration_min || 0);
+      const cats = Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
+      chart("c-mix", {
+        legend: legend({ type: "scroll", top: "auto", bottom: 0, pageIconColor: C.muted, pageTextStyle: { color: C.faint } }),
+        grid: grid({ top: 14, bottom: 34 }),
+        tooltip: tip({ valueFormatter: (v) => `${nf(v, 1)} h` }),
+        xAxis: catAxis(keys.map(U.label), mixUnit === "week" ? { axisLabel: { ...AX.axisLabel, formatter: (v) => v.replace(/, \d{4}$/, "") } } : {}),
+        yAxis: valAxis({ scale: false, axisLabel: { formatter: "{value} h", color: C.muted } }),
+        series: cats.map((c) => ({
+          name: sportLabel(c), type: "bar", stack: "mix", barMaxWidth: 34, itemStyle: { color: CAT_COLORS[c] || C.line },
+          data: keys.map((k) => +(sum(W.filter((w) => w.category === c && U.key(w.date) === k).map((w) => w.duration_min)) / 60).toFixed(1)),
+        })),
+      });
+    } else hideCard("c-mix");
+  }
+
+  function renderActivity(A) {
     const si = firstIdx(A.steps);
     if (si < 0) hideCard("c-steps");
     else {
@@ -622,27 +614,6 @@
       });
     }
 
-    const W = R.W;
-    if (W.length) {
-      const mixUnit = R.span > 730 ? "year" : R.unit === "day" ? "week" : R.unit;
-      const U = UNITS[mixUnit];
-      const keys = [...new Set(W.map((w) => U.key(w.date)))].sort();
-      const totals = {};
-      for (const w of W) totals[w.category] = (totals[w.category] || 0) + (w.duration_min || 0);
-      const cats = Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
-      chart("c-mix", {
-        legend: legend({ type: "scroll", top: "auto", bottom: 0, pageIconColor: C.muted, pageTextStyle: { color: C.faint } }),
-        grid: grid({ top: 14, bottom: 34 }),
-        tooltip: tip({ valueFormatter: (v) => `${nf(v, 1)} h` }),
-        xAxis: catAxis(keys.map(U.label), mixUnit === "week" ? { axisLabel: { ...AX.axisLabel, formatter: (v) => v.replace(/, \d{4}$/, "") } } : {}),
-        yAxis: valAxis({ scale: false, axisLabel: { formatter: "{value} h", color: C.muted } }),
-        series: cats.map((c) => ({
-          name: c, type: "bar", stack: "mix", barMaxWidth: 34, itemStyle: { color: CAT_COLORS[c] || C.line },
-          data: keys.map((k) => +(sum(W.filter((w) => w.category === c && U.key(w.date) === k).map((w) => w.duration_min)) / 60).toFixed(1)),
-        })),
-      });
-    } else hideCard("c-mix");
-
     const ri = firstIdx(A.move_closed_pct);
     if (ri >= 0) {
       chart("c-rings", {
@@ -657,16 +628,6 @@
       });
     } else hideCard("c-rings");
 
-    const recent = W.slice().sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (b.hour || 0) - (a.hour || 0))).slice(0, 15);
-    if (!recent.length) return hideCard("t-recent");
-    table("t-recent", ["Date", "Type", "Min", "Km", "kcal", "Avg HR", "Max HR", "Load"],
-      recent.map((w) => [
-        `${fmtDate(w.date)} <span class="pill">${esc(WEEKDAYS[w.weekday] || "")}</span>`,
-        `<span class="dot" style="background:${CAT_COLORS[w.category] || C.line}" aria-hidden="true"></span>${esc(w.activity)}`,
-        nf(w.duration_min), isNum(w.distance_km) && w.distance_km > 0 ? nf(w.distance_km, 2) : "—",
-        w.kcal_est && isNum(w.active_kcal) ? `<span title="HR estimate">~${nf(w.active_kcal)}</span>` : nf(w.active_kcal),
-        nf(w.avg_hr), nf(w.max_hr), nf(w.trimp),
-      ]));
   }
 
   function renderLoad(R) {
@@ -705,19 +666,18 @@
   }
 
   // Same definitions as healthstats/analysis.py phase_table, clipped to the selected range.
-  function phaseStats(p) {
+  function phaseStats(p, workouts) {
     const d = D.daily, i0 = daysBetween(D.start, p.start), i1 = daysBetween(D.start, p.end) - 1;
     const idx = []; for (let i = Math.max(0, i0); i <= Math.min(d.date.length - 1, i1); i++) idx.push(i);
     const days = daysBetween(p.start, p.end), weeks = Math.max(days / 7, 1);
     const watch = idx.filter((i) => d.active_kcal[i] > 50);
-    const wk = D.W.filter((w) => w.date >= p.start && w.date < p.end), fb = wk.filter((w) => w.category === "Football");
+    const wk = workouts.filter((w) => w.date >= p.start && w.date < p.end);
     const avg = (col, min) => { const v = idx.map((i) => d[col]?.[i]).filter(isNum); return v.length >= Math.min(min, Math.max(1, Math.floor(days / 3))) ? mean(v) : null; };
     const wl = idx.map((i) => d.weight_lb[i]).filter(isNum);
     return {
       ...p, days,
       steps: mean(watch.map((i) => d.steps[i])), active_kcal: mean(watch.map((i) => d.active_kcal[i])), exercise_min: mean(watch.map((i) => d.exercise_min[i])),
       workouts_per_week: wk.length / weeks, workout_hours_per_week: sum(wk.map((w) => w.duration_min)) / 60 / weeks,
-      football_per_month: ((fb.length / weeks) * 52) / 12, football_hours: sum(fb.map((w) => w.duration_min)) / 60,
       rhr: avg("rhr", 30), hrv: avg("hrv", 30), vo2max: avg("vo2max", 5), walking_speed_kmh: avg("walking_speed_kmh", 30), sleep_h: avg("sleep_h", 30),
       weight_start_lb: wl[0] ?? null, weight_end_lb: wl[wl.length - 1] ?? null,
       weight_lb_per_month: wl.length >= 14 ? (wl[wl.length - 1] - wl[0]) / (wl.length / 30.44) : null,
@@ -725,7 +685,7 @@
   }
 
   function renderPhases(R) {
-    const P = phasesIn(R).map(phaseStats);
+    const P = phasesIn(R).map((p) => phaseStats(p, R.W));
     if (!P.length) return hideSection("phases");
     const rowsDef = [
       ["Dates", (p) => `${fmtDate(p.start)} – ${fmtDate(addDays(p.end, -1))}`],
@@ -737,8 +697,6 @@
       ["Exercise minutes / day", (p) => nf(p.exercise_min)],
       ["Workouts / week", (p) => nf(p.workouts_per_week, 1)],
       ["Training hours / week", (p) => nf(p.workout_hours_per_week, 1)],
-      ["Football games / month", (p) => nf(p.football_per_month, 1)],
-      ["Football hours (total)", (p) => nf(p.football_hours)],
       ["Resting HR", (p) => (isNum(p.rhr) ? `${nf(p.rhr, 1)} bpm` : "—")],
       ["HRV (SDNN)", (p) => (isNum(p.hrv) ? `${nf(p.hrv, 1)} ms` : "—")],
       ["VO₂ max", (p) => nf(p.vo2max, 1)],
@@ -772,23 +730,32 @@
     });
   }
 
-  function render(from, to) {
-    const R = makeRange(from, to);
+  function render(from, to, sport, view) {
+    const R = makeRange(from, to, sport);
     const A = aggregate(R);
+    document.querySelectorAll(".help-content:popover-open").forEach((el) => el.hidePopover());
+    $("error").hidden = true;
+    $("training-view").hidden = view !== "training";
+    $("body-view").hidden = view !== "body";
     document.querySelectorAll("main section, main .card").forEach((el) => { el.hidden = false; });
-    safe("kpis", () => renderKpis(R));
-    safe("weight", () => renderWeight(R, A));
-    safe("dexa", () => renderDexa(R));
-    safe("football", () => renderFootball(R, A));
-    safe("heart", () => renderHeart(R, A));
-    safe("activity", () => renderActivity(R, A));
-    safe("load", () => renderLoad(R));
-    safe("energy", () => renderEnergy(A));
-    safe("phases", () => renderPhases(R));
-    safe("sleep", () => renderSleep(A));
-    const anything = $("kpis").children.length || [...document.querySelectorAll("main section")].some((s) => !s.hidden);
+    if (view === "training") {
+      safe("training", () => renderTraining(R, A));
+      safe("load", () => renderLoad(R));
+      safe("recovery", () => renderRecovery(R));
+    } else {
+      safe("kpis", () => renderKpis(R));
+      safe("weight", () => renderWeight(R, A));
+      safe("dexa", () => renderDexa(R));
+      safe("heart", () => renderHeart(R, A));
+      safe("activity", () => renderActivity(A));
+      safe("energy", () => renderEnergy(A));
+      safe("phases", () => renderPhases(R));
+      safe("sleep", () => renderSleep(A));
+    }
+    const anything = $("kpis").children.length || [...document.querySelectorAll("#body-view section")].some((s) => !s.hidden);
     $("empty").hidden = !!anything;
-    $("range-status").textContent = `${fmtDate(from)} – ${fmtDate(to)}`;
+    $("range-status").textContent = `${R.sportLabel} · ${fmtDate(from)} – ${fmtDate(to)} · ${nf(R.W.length)} sessions`;
+    renderHelp();
   }
 
   // ---------------------------------------------------------------- range controls
@@ -800,18 +767,40 @@
   }
 
   function initRange() {
-    const form = $("range"), fromEl = $("from"), toEl = $("to"), err = $("range-error");
+    const form = $("range"), fromEl = $("from"), toEl = $("to"), sportEl = $("sport"), err = $("range-error");
+    let group;
+    sportEl.replaceChildren();
+    for (const sport of D.sports) {
+      if (sport.group && group?.label !== sport.group) {
+        group = document.createElement("optgroup");
+        group.label = sport.group;
+        sportEl.append(group);
+      }
+      const option = document.createElement("option");
+      option.value = sport.value;
+      option.textContent = sport.label;
+      (sport.group ? group : sportEl).append(option);
+    }
+    sportEl.disabled = false;
+    const q = new URLSearchParams(location.search);
+    let activeView = q.get("view") === "body" ? "body" : "training";
+    let appliedRange;
+    sportEl.value = D.sports.some((s) => s.value === q.get("sport")) ? q.get("sport") : "all";
     const buttons = [...document.querySelectorAll("[data-preset]")];
     for (const el of [fromEl, toEl]) { el.min = D.start; el.max = D.end; }
 
     const apply = (from, to, preset) => {
+      appliedRange = { from, to, preset };
       fromEl.value = from; toEl.value = to;
       document.querySelectorAll(".presets [data-preset]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.preset === preset)));
+      document.querySelectorAll("[data-view]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === activeView)));
       const q = new URLSearchParams();
+      if (activeView === "body") q.set("view", activeView);
+      if (sportEl.value !== "all") q.set("sport", sportEl.value);
       if (preset && preset !== "all") q.set("range", preset);
       else if (!preset) { q.set("from", from); q.set("to", to); }
       history.replaceState(null, "", `${location.pathname}${q.size ? `?${q}` : ""}${location.hash}`);
-      render(from, to);
+      render(from, to, sportEl.value, activeView);
     };
     const setError = (msg, fields = []) => {
       err.textContent = msg; err.hidden = !msg;
@@ -835,15 +824,28 @@
       apply(from, to, match || null);
     });
     form.addEventListener("submit", (e) => e.preventDefault());
+    document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => {
+      activeView = button.dataset.view;
+      setError("");
+      apply(appliedRange.from, appliedRange.to, appliedRange.preset);
+    }));
+    $("reset-sport").addEventListener("click", () => {
+      if (sportEl.value === "all") {
+        setError("");
+        const r = presetRange("all");
+        return apply(r.from, r.to, "all");
+      }
+      sportEl.value = "all";
+      sportEl.dispatchEvent(new Event("change", { bubbles: true }));
+    });
 
-    const q = new URLSearchParams(location.search);
     const preset = q.get("range");
     if (preset && (PRESET_MONTHS[preset] || preset === "ytd")) { const r = presetRange(preset); return apply(r.from, r.to, preset); }
     const f = q.get("from"), t = q.get("to");
     if (isIsoDate(f) && isIsoDate(t) && f <= t) {
-    const clamp = (s) => minStr(maxStr(s, D.start), D.end);
-    const from = clamp(f), to = clamp(t);
-    if (from <= to) return apply(from, to, null);
+      const clamp = (s) => minStr(maxStr(s, D.start), D.end);
+      const from = clamp(f), to = clamp(t);
+      if (from <= to) return apply(from, to, null);
     }
     const r = presetRange("all");
     apply(r.from, r.to, "all");
@@ -854,6 +856,7 @@
   new ResizeObserver(() => document.documentElement.style.setProperty("--topbar-h", `${topbar.offsetHeight}px`)).observe(topbar);
 
   // ---------------------------------------------------------------- boot
+  initHelp();
   $("range").setAttribute("aria-busy", "true");
   load().then((data) => {
     D = data;

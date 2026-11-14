@@ -1,6 +1,8 @@
-# Mohaimen's Fitness Stats
+# My Fitness
 
-A visualization-only dashboard built from Apple Health and Strava exports, plus BodySpec DEXA scans. The site has date presets and custom date inputs; charts, KPIs and tables update for the selected range.
+A visualization-only dashboard built from Apple Health and Strava exports, plus BodySpec DEXA scans. The home view focuses on training analysis: weekly consistency, intensity distribution, sport comparisons, distance rate, training load and next-day resting-HR relationships. Body measurements, DEXA, daily health and weight correlations are in a separate **Body & health** view.
+
+Date presets and custom dates apply across both views. The sport filter controls training metrics; daily health measurements remain date-based. Views, dates and sports persist in the URL. Info buttons explain definitions, missing-data rules and estimates.
 
 **Live site:** https://mohaimenhasan.github.io/mohaimen-health-stats/
 
@@ -52,6 +54,7 @@ python3.13 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m healthstats.vault open   # restore site/data and config inputs (needs .data-key or DATA_KEY)
 .venv/bin/python -m healthstats          # rebuild data (~20 s cold; parsed Apple data is cached in .cache/)
 .venv/bin/python -m pytest -q tests      # unit tests on synthetic data
+node --test tests/test_fitness.mjs       # sport filtering and training-load calculations
 python3 -m http.server -d site 8000      # preview at http://localhost:8000
 ```
 
@@ -69,7 +72,7 @@ python3 -m http.server -d site 8000      # preview at http://localhost:8000
 | `privacy.py` | Final scan of generated files for selected identifiers |
 | `vault.py` | Encrypts and decrypts the data bundle `data.enc` |
 
-The interface uses the project skills in `.agents/skills/`, installed with `npx skills add`; `npx ui-skills` was used to review the UI guidance.
+The interface uses the project skills in `.agents/skills/`, installed with `npx skills add`; `npx ui-skills` was used to review the UI guidance. The `premium-frontend-ui` skill from `github/awesome-copilot` is also installed. Dashboard interactions retain native controls and reduced-motion support rather than adding decorative animation.
 
 ## Methods
 
@@ -79,8 +82,13 @@ The interface uses the project skills in `.agents/skills/`, installed with `npx 
   - Sessions without energy data get kcal estimated from avg HR. The fit uses my own sessions of the same type, and the site marks these values with `~`.
 - **Local time:** Apple stores every timestamp in the exporting phone's offset. Each timestamp is therefore shifted to the time zone of the nearest Apple Watch workout.
 - **Heart rate:** max HR is the 99.9th percentile of in-workout HR. Zones are 60/70/80/90% of max HR. Training load uses Banister TRIMP; fitness is the 42-day EWMA and fatigue the 7-day EWMA.
-- **Football speed:** taken from Strava GPX only, using a 2-second displacement window with plausibility filters. A sprint means ≥21 km/h held for ≥2 s. Top speed is the best 5-second average.
-- **Correlations:** computed on monthly averages. They are observational and say nothing about causation.
+- **Soccer speed:** taken from Strava GPX only, using a 2-second displacement window with plausibility filters. A sprint means ≥21 km/h held for ≥2 s. Top speed is the best 5-second average.
+- **Sport filters:** options come from recorded activities, with grouped choices for categories containing multiple activity types. Soccer is the display name for the pipeline's Football category.
+- **Training load:** sport-specific curves use the full recorded history before clipping to the selected dates, so changing the start date does not reset fitness or fatigue.
+- **Consistency:** active Monday-based weeks, consecutive active-week streaks and trailing 8-week participation. Empty weeks mean no recorded selected sessions, not necessarily no exercise.
+- **Intensity:** Z4 + Z5 minutes as a share of known HR-zone minutes; missing HR time is excluded.
+- **Next-day resting HR:** selected-sport TRIMP paired with the following day's RHR deviation from its preceding 28-day mean (at least 7 baseline readings). Both paired days must be inside the range. These associations are not causal.
+- **Correlations:** computed on daily, weekly or monthly buckets according to the selected date range. Workout-session correlations follow the sport filter. They are observational and say nothing about causation.
 
 ## Privacy
 

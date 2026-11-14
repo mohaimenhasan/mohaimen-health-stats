@@ -57,6 +57,13 @@
       "computedHash": "5bd7689c5508c6bd8166f796b3d1bd32255077447595b14b60fac9847dce63f1",
       "installMode": "copy"
     },
+    "premium-frontend-ui": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/premium-frontend-ui/SKILL.md",
+      "computedHash": "e7f3d02a0233beafdd6fe5335427388109b9699ebcdc6a8782a8bada2826d916",
+      "installMode": "copy"
+    },
     "ui-skills-root": {
       "source": "ibelick/ui-skills",
       "sourceType": "github",
