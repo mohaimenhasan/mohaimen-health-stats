@@ -2,7 +2,7 @@
 
 A visualization-only dashboard built from Apple Health and Strava exports, plus BodySpec DEXA scans. The home view focuses on training analysis: weekly consistency, intensity distribution, sport comparisons, distance rate, training load and next-day resting-HR relationships. Body measurements, DEXA, daily health and weight correlations are in a separate **Body & health** view.
 
-Date presets and custom dates apply across both views. The sport filter controls training metrics; daily health measurements remain date-based. Views, dates and sports persist in the URL. Info buttons explain definitions, missing-data rules and estimates.
+Date presets and custom dates apply across both views. The sport filter controls training metrics; daily health measurements remain date-based. Views, dates and sports persist in the URL. Info buttons show definitions, missing-data rules and estimates on hover, keyboard focus or tap; clicking pins them open.
 
 **Live site:** https://mohaimenhasan.github.io/mohaimen-health-stats/
 

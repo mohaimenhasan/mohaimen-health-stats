@@ -41,6 +41,28 @@ export function renderHelp() {
 
 export function initHelp() {
   let trigger;
+  let pinned = null;
+  let showTimer;
+  let hideTimer;
+  const popupFor = (button) => document.getElementById(button.getAttribute("popovertarget"));
+  const isOpen = (popup) => popup.matches(":popover-open");
+  const show = (button) => {
+    clearTimeout(hideTimer);
+    const popup = popupFor(button);
+    trigger = button;
+    if (!isOpen(popup)) popup.showPopover();
+  };
+  // Hover and keyboard-focus previews close when both the trigger and the popover are left; clicks pin them open.
+  const scheduleHide = () => {
+    clearTimeout(showTimer);
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+      if (!trigger?.isConnected) return;
+      const popup = popupFor(trigger);
+      if (popup === pinned || !isOpen(popup) || popup.matches(":hover") || trigger.matches(":hover, :focus-visible")) return;
+      popup.hidePopover();
+    }, 150);
+  };
   const position = (popup) => {
     if (!trigger?.isConnected) return;
     const rect = trigger.getBoundingClientRect();
@@ -61,17 +83,51 @@ export function initHelp() {
     popup.textContent = text;
     popup.addEventListener("beforetoggle", (event) => {
       if (event.newState === "open") requestAnimationFrame(() => position(popup));
+      else if (pinned === popup) pinned = null;
     });
     popup.addEventListener("toggle", (event) => {
       if (event.newState === "open") position(popup);
     });
+    popup.addEventListener("pointerenter", () => clearTimeout(hideTimer));
+    popup.addEventListener("pointerleave", (event) => {
+      if (event.pointerType !== "touch") scheduleHide();
+    });
     document.body.append(popup);
   }
+  document.addEventListener("pointerover", (event) => {
+    const button = event.target instanceof Element && event.target.closest(".help-trigger");
+    if (!button || event.pointerType === "touch" || button.contains(event.relatedTarget)) return;
+    clearTimeout(showTimer);
+    clearTimeout(hideTimer);
+    showTimer = setTimeout(() => show(button), 80);
+  });
+  document.addEventListener("pointerout", (event) => {
+    const button = event.target instanceof Element && event.target.closest(".help-trigger");
+    if (!button || event.pointerType === "touch" || button.contains(event.relatedTarget)) return;
+    scheduleHide();
+  });
+  document.addEventListener("focusin", (event) => {
+    const button = event.target instanceof Element && event.target.closest(".help-trigger");
+    if (button?.matches(":focus-visible")) show(button);
+  });
+  document.addEventListener("focusout", (event) => {
+    if (event.target instanceof Element && event.target.closest(".help-trigger")) scheduleHide();
+  });
   document.addEventListener("click", (event) => {
-    const button = event.target.closest(".help-trigger");
+    const button = event.target instanceof Element && event.target.closest(".help-trigger");
     if (!button) return;
+    clearTimeout(showTimer);
+    clearTimeout(hideTimer);
+    const popup = popupFor(button);
     trigger = button;
-    position(document.getElementById(button.getAttribute("popovertarget")));
+    if (isOpen(popup) && pinned !== popup) {
+      // Already previewed by hover or focus: keep it open instead of letting the native toggle close it.
+      event.preventDefault();
+      pinned = popup;
+      return;
+    }
+    if (!isOpen(popup)) pinned = popup;
+    position(popup);
   });
   const close = () => document.querySelectorAll(".help-content:popover-open").forEach((el) => el.hidePopover());
   window.addEventListener("resize", close);

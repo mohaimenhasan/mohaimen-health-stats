@@ -73,8 +73,7 @@ nav::-webkit-scrollbar { display: none; }
 .views button:hover, .views button[aria-pressed="true"] { background: var(--card-2); color: var(--text); }
 
 /* ---------------------------------------------------------------- layout */
-main { max-inline-size: 1200px; margin-inline: auto; padding: 0 20px 80px; }
-h1 { font-size: clamp(28px, 4.5vw, 44px); line-height: 1.1; margin: 40px 0 24px; }
+main { max-inline-size: 1200px; margin-inline: auto; padding: 28px 20px 80px; }
 
 section { padding-block-start: 40px; }
 section > h2 { font-size: 24px; margin: 0 0 14px; }
@@ -125,7 +124,7 @@ tbody tr:hover { background: var(--card-2); }
   inline-size: 24px; block-size: 24px; margin-inline-start: 6px;
   border: 1px solid var(--border); border-radius: 50%;
   background: transparent; color: var(--muted);
-  font: 600 12px/1 Georgia, serif; cursor: pointer;
+  font: 600 12px/1 Georgia, serif; cursor: help;
 }
 .help-trigger:hover, .help-trigger:focus-visible { color: var(--text); background: var(--card-2); }
 .help-content {

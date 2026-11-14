@@ -1,5 +1,5 @@
-import { sportLabel, sportOptions, selectWorkouts, trainingLoad, trainingSummary, recoveryPairs, linearFit } from "./fitness.mjs?v=my-fitness-1";
-import { helpButton, initHelp, renderHelp } from "./help.mjs?v=my-fitness-1";
+import { sportLabel, sportOptions, selectWorkouts, trainingLoad, trainingSummary, recoveryPairs, linearFit } from "./fitness.mjs?v=my-fitness-2";
+import { helpButton, initHelp, renderHelp } from "./help.mjs?v=my-fitness-2";
 
 /* My Fitness: date-based health measurements and sport-filtered workouts. */
 (() => {
