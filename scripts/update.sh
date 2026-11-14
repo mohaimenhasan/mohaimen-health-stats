@@ -31,8 +31,13 @@ done
 
 "$PY" -m healthstats
 "$PY" -m healthstats.privacy site config
+if [ ! -f .data-key ] && [ -z "${DATA_KEY:-}" ]; then
+  echo "Missing .data-key (restore your backup, or: $PY -m healthstats.vault keygen && gh secret set DATA_KEY < .data-key)" >&2
+  exit 1
+fi
+"$PY" -m healthstats.vault seal
 
-git add site/data config
+git add data.enc config
 if git diff --cached --quiet; then
   echo "No data changes to publish."
   exit 0

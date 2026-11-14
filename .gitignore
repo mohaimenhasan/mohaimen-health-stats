@@ -17,3 +17,9 @@ __pycache__/
 .venv/
 node_modules/
 .pytest_cache/
+
+# Generated / personal data lives only in the encrypted data.enc
+site/data/
+config/weight_log.csv
+config/dexa/
+.data-key

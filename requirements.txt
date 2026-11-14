@@ -3,3 +3,4 @@ numpy>=1.26
 pandas>=2.2
 fitdecode>=0.10
 pytest>=8
+cryptography>=43

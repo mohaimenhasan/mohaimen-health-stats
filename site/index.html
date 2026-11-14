@@ -3,55 +3,75 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Body Stats</title>
-  <meta name="description" content="Body measurements, activity, heart and fitness metrics, training load, sleep and correlations.">
+  <title>Mohaimen's Fitness Stats</title>
+  <meta name="description" content="Body weight, body composition, football, heart, activity, training load, energy, sleep and correlations.">
   <meta name="robots" content="noindex">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0f14">
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <nav>
-    <span class="brand">⚽ Body Stats</span>
-    <a href="#weight">Weight</a>
-    <a href="#composition">Body comp</a>
-    <a href="#football">Football</a>
-    <a href="#heart">Heart &amp; fitness</a>
-    <a href="#activity">Activity</a>
-    <a href="#load">Training load</a>
-    <a href="#energy">Energy</a>
-    <a href="#phases">Periods</a>
-    <a href="#sleep">Sleep</a>
-  </nav>
+  <header class="topbar" id="topbar">
+    <form class="range" id="range" aria-label="Date range" novalidate>
+      <div class="presets" role="group" aria-label="Preset ranges">
+        <button type="button" data-preset="1m" aria-pressed="false">1M</button>
+        <button type="button" data-preset="3m" aria-pressed="false">3M</button>
+        <button type="button" data-preset="6m" aria-pressed="false">6M</button>
+        <button type="button" data-preset="ytd" aria-pressed="false">YTD</button>
+        <button type="button" data-preset="1y" aria-pressed="false">1Y</button>
+        <button type="button" data-preset="2y" aria-pressed="false">2Y</button>
+        <button type="button" data-preset="5y" aria-pressed="false">5Y</button>
+        <button type="button" data-preset="all" aria-pressed="true">All</button>
+      </div>
+      <div class="dates">
+        <label for="from">From</label>
+        <input type="date" id="from" name="from" required aria-describedby="range-error">
+        <label for="to">To</label>
+        <input type="date" id="to" name="to" required aria-describedby="range-error">
+      </div>
+      <p class="field-error" id="range-error" hidden></p>
+    </form>
+    <nav aria-label="Sections">
+      <a href="#weight">Weight</a>
+      <a href="#composition">Body comp</a>
+      <a href="#football">Football</a>
+      <a href="#heart">Heart &amp; fitness</a>
+      <a href="#activity">Activity</a>
+      <a href="#load">Training load</a>
+      <a href="#energy">Energy</a>
+      <a href="#phases">Periods</a>
+      <a href="#sleep">Sleep</a>
+    </nav>
+  </header>
 
   <main>
-    <header class="hero">
-      <h1 id="title">Body Stats</h1>
-      <p class="meta" id="meta"></p>
-    </header>
-    <div id="error"></div>
+    <h1>Mohaimen's Fitness Stats</h1>
+    <p class="sr-only" id="range-status" aria-live="polite"></p>
+    <div class="error" id="error" role="alert" hidden></div>
 
     <div class="grid kpis" id="kpis"></div>
 
-    <section id="weight">
-      <h2>Weight</h2>
+    <section id="weight" aria-labelledby="h-weight">
+      <h2 id="h-weight">Weight</h2>
       <div class="grid cols-2">
         <div class="card span-2">
           <h3>Body weight</h3>
           <div class="chart tall" id="c-weight"></div>
         </div>
         <div class="card">
-          <h3>Month-over-month change</h3>
+          <h3 id="h-weight-change">Weight change</h3>
           <div class="chart short" id="c-weight-change"></div>
         </div>
         <div class="card">
-          <h3>Weight vs. weekly training hours</h3>
+          <h3>Weight vs. training hours</h3>
           <div class="chart short" id="c-weight-training"></div>
         </div>
       </div>
     </section>
 
-    <section id="composition">
-      <h2>Body composition</h2>
+    <section id="composition" aria-labelledby="h-composition">
+      <h2 id="h-composition">Body composition</h2>
       <div class="grid cols-3">
         <div class="card">
           <h3>Mass breakdown</h3>
@@ -72,28 +92,28 @@
       </div>
     </section>
 
-    <section id="football">
-      <h2>Football</h2>
-      <div class="grid kpis three" id="football-kpis"></div>
-      <div class="grid cols-2" style="margin-top:14px">
+    <section id="football" aria-labelledby="h-football">
+      <h2 id="h-football">Football</h2>
+      <div class="grid kpis" id="football-kpis"></div>
+      <div class="grid cols-2">
         <div class="card span-2">
-          <h3>Every game</h3>
+          <h3>Games · calendar</h3>
           <div class="chart" id="c-football-cal"></div>
         </div>
         <div class="card span-2">
-          <h3>Games per month</h3>
-          <div class="chart" id="c-football-monthly"></div>
+          <h3 id="h-football-games">Games</h3>
+          <div class="chart" id="c-football-games"></div>
         </div>
         <div class="card">
           <h3>Distance per game</h3>
           <div class="chart" id="c-football-dist"></div>
         </div>
         <div class="card">
-          <h3>Speed &amp; sprints (GPS games)</h3>
+          <h3>Top speed &amp; sprints</h3>
           <div class="chart" id="c-football-speed"></div>
         </div>
         <div class="card">
-          <h3>When I play</h3>
+          <h3>Day &amp; time</h3>
           <div class="chart" id="c-football-when"></div>
         </div>
         <div class="card">
@@ -104,15 +124,15 @@
           <h3>By year</h3>
           <div class="table-wrap" id="t-football-years"></div>
         </div>
-        <div class="card">
+        <div class="card span-2">
           <h3>Average heart rate per game</h3>
           <div class="chart" id="c-football-hr"></div>
         </div>
       </div>
     </section>
 
-    <section id="heart">
-      <h2>Heart &amp; fitness</h2>
+    <section id="heart" aria-labelledby="h-heart">
+      <h2 id="h-heart">Heart &amp; fitness</h2>
       <div class="grid cols-2">
         <div class="card"><h3>VO₂ max</h3><div class="chart short" id="c-vo2"></div></div>
         <div class="card"><h3>Resting heart rate</h3><div class="chart short" id="c-rhr"></div></div>
@@ -127,42 +147,43 @@
       </div>
     </section>
 
-    <section id="activity">
-      <h2>Activity</h2>
+    <section id="activity" aria-labelledby="h-activity">
+      <h2 id="h-activity">Activity</h2>
       <div class="grid cols-2">
         <div class="card span-2"><h3>Steps &amp; active energy</h3><div class="chart" id="c-steps"></div></div>
         <div class="card"><h3>Training hours by type</h3><div class="chart" id="c-mix"></div></div>
         <div class="card"><h3>Activity rings closed</h3><div class="chart" id="c-rings"></div></div>
         <div class="card span-2">
-          <h3>Recent sessions</h3>
+          <h3>Latest sessions</h3>
           <div class="table-wrap" id="t-recent"></div>
         </div>
       </div>
     </section>
 
-    <section id="load">
-      <h2>Training load</h2>
+    <section id="load" aria-labelledby="h-load">
+      <h2 id="h-load">Training load</h2>
       <div class="card"><div class="chart tall" id="c-load"></div></div>
     </section>
 
-    <section id="energy">
-      <h2>Energy balance</h2>
+    <section id="energy" aria-labelledby="h-energy">
+      <h2 id="h-energy">Energy balance</h2>
       <div class="card"><div class="chart" id="c-energy"></div></div>
     </section>
 
-    <section id="phases">
-      <h2>Period comparison</h2>
+    <section id="phases" aria-labelledby="h-phases">
+      <h2 id="h-phases">Period comparison</h2>
       <div class="card"><div class="table-wrap" id="t-phases"></div></div>
     </section>
 
-    <section id="sleep">
-      <h2>Sleep</h2>
+    <section id="sleep" aria-labelledby="h-sleep">
+      <h2 id="h-sleep">Sleep</h2>
       <div class="grid cols-2">
         <div class="card"><h3>Hours per night</h3><div class="chart short" id="c-sleep"></div></div>
         <div class="card"><h3>Bedtime &amp; wake time</h3><div class="chart short" id="c-bedtime"></div></div>
       </div>
     </section>
 
+    <p class="empty" id="empty" hidden>No data <button type="button" data-preset="all">All</button></p>
   </main>
 
   <script src="vendor/echarts.min.js"></script>

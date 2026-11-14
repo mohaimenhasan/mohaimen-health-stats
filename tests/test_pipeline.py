@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from healthstats import gps, privacy, sources
+from healthstats import gps, privacy, sources, vault
 from healthstats.daily import nightly_sleep
 from healthstats.tz import LocalTime
 from healthstats.workouts import dedupe, impute_energy, localize
@@ -185,3 +185,35 @@ def test_privacy_audit_passes_clean_aggregates_and_honours_extra(tmp_path):
     (tmp_path / "a.json").write_text('{"weight_lb": [158, 205, 147], "top_kmh": 26.1}')
     assert privacy.audit(tmp_path) == []
     assert privacy.audit(tmp_path, extra={"secret": "205, 147"})
+
+
+# --- data vault --------------------------------------------------------------
+
+def _data_tree(root):
+    (root / "site/data").mkdir(parents=True)
+    (root / "site/data/daily.json").write_text('{"weight_lb":[150]}')
+    (root / "config/dexa").mkdir(parents=True)
+    (root / "config/dexa/scan.json").write_text("{}")
+    (root / "config/weight_log.csv").write_text("date,weight_lb\n2026-01-01,150\n")
+
+
+def test_vault_round_trip_and_partial_open(tmp_path):
+    src, dst = tmp_path / "src", tmp_path / "dst"
+    _data_tree(src)
+    key = vault.Fernet.generate_key()
+    assert vault.seal(src, key) is True
+    assert b"weight_lb" not in (src / vault.VAULT).read_bytes()
+    assert vault.seal(src, key) is False  # unchanged data leaves data.enc untouched
+
+    dst.mkdir()
+    (dst / vault.VAULT).write_bytes((src / vault.VAULT).read_bytes())
+    assert vault.open_vault(dst, key, only="site/data") == ["site/data/daily.json"]
+    assert (dst / "site/data/daily.json").read_text() == '{"weight_lb":[150]}'
+    assert not (dst / "config").exists()
+
+
+def test_vault_rejects_wrong_key(tmp_path):
+    _data_tree(tmp_path)
+    vault.seal(tmp_path, vault.Fernet.generate_key())
+    with pytest.raises(SystemExit, match="wrong key"):
+        vault.open_vault(tmp_path, vault.Fernet.generate_key())

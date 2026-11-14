@@ -75,20 +75,9 @@ def _write(out_dir: Path, name: str, obj) -> None:
     (out_dir / name).write_text(json.dumps(_clean(obj), separators=(",", ":"), ensure_ascii=False))
 
 
-def _mean_window(s: pd.Series, center: pd.Timestamp, days: int) -> float | None:
-    if s is None:
-        return None
-    w = s[(s.index >= center - pd.Timedelta(days=days)) & (s.index <= center + pd.Timedelta(days=days))].dropna()
-    return float(w.mean()) if len(w) >= 5 else None
-
-
 def _last_window(s: pd.Series, end: pd.Timestamp, days: int) -> float | None:
     w = s[(s.index > end - pd.Timedelta(days=days)) & (s.index <= end)].dropna()
     return float(w.mean()) if len(w) >= 3 else None
-
-
-def _fmt(x, nd=0):
-    return f"{x:,.{nd}f}"
 
 
 # ---------------------------------------------------------------- football
@@ -156,192 +145,6 @@ def football_summary(w: pd.DataFrame, end: pd.Timestamp) -> dict:
             "biggest_load": rec("trimp"),
         },
     }
-
-
-# ---------------------------------------------------------------- insights
-
-def make_insights(ctx: dict) -> list[dict]:
-    out: list[dict] = []
-    daily, weight, fb, monthly, dexa_scans, phases, corr = (ctx[k] for k in ("daily", "weight", "football", "monthly", "dexa", "phases", "corr"))
-    end = ctx["end"]
-
-    def add(key, kicker, headline, body, tone="neutral"):
-        out.append({"id": key, "kicker": kicker, "headline": headline, "body": body, "tone": tone})
-
-    def guard(fn):
-        try:
-            fn()
-        except Exception as exc:  # one broken insight should never break the build
-            print(f"  ! insight skipped: {fn.__name__}: {exc}")
-
-    log = weight.log
-    cur = float(log["weight_lb"].iloc[-1]) if len(log) else None
-    height_m = ctx["height_cm"] / 100
-
-    def _bmi(lb):
-        return lb / analysis.KG_LB / height_m ** 2
-
-    def weight_story():
-        first = log.iloc[0]
-        if weight.peak_date is None or cur is None:
-            return
-        gain = weight.peak_lb - first["weight_lb"]
-        yrs = (weight.peak_date - first["date"]).days / 365.25
-        add("gain", "The slow creep", f"+{gain:.0f} lb in {yrs:.1f} years",
-            f"From {first['weight_lb']:.0f} lb in {first['date']:%b %Y} (when full-time work started) to a peak of {weight.peak_lb:.0f} lb in {weight.peak_date:%b %Y} — about {gain / yrs:.0f} lb a year, BMI {_bmi(first['weight_lb']):.1f} → {_bmi(weight.peak_lb):.1f}.", "bad")
-        lost = weight.peak_lb - cur
-        months = max((log["date"].iloc[-1] - weight.peak_date).days / 30.44, 1)
-        add("loss", "The cut", f"−{lost:.0f} lb in {months:.0f} months",
-            f"{weight.peak_lb:.0f} → {cur:.0f} lb ({lost / weight.peak_lb * 100:.0f}% of body weight), averaging {lost / months:.1f} lb/month or {lost / months * 12 / 52:.1f} lb/week. That's roughly {lost * analysis.KCAL_PER_LB:,.0f} kcal of cumulative deficit.", "good")
-        lg = log.set_index("date")["weight_lb"].diff()
-        lg = lg[lg.index > weight.peak_date]
-        if len(lg):
-            d = lg.idxmin()
-            add("fastest", "Steepest month", f"−{abs(lg.min()):.0f} lb in a month",
-                f"The biggest single drop in the log landed in {d:%B %Y}.", "good")
-
-    def dexa_story():
-        if not dexa_scans:
-            return
-        s = dexa_scans[-1]
-        ref = s.get("reference") or {}
-        pop = f"{ref.get('gender', '').lower()}s aged {ref.get('min_age')}–{ref.get('max_age')}" if ref.get("min_age") else "the reference population"
-        bf_p = s.get("body_fat_pct_percentile")
-        txt = f"DEXA on {pd.Timestamp(s['date']):%b %-d, %Y}: {s['fat_lb']:.1f} lb fat, {s['lean_lb']:.1f} lb lean, {s['bone_lb']:.1f} lb bone."
-        if bf_p is not None:
-            txt += f" Lower body fat than {100 - bf_p}% of {pop}."
-        if s.get("vat_lb") is not None:
-            txt += f" Visceral fat just {s['vat_lb']:.2f} lb."
-        add("dexa", "Body composition", f"{s['body_fat_pct']:.1f}% body fat", txt, "good")
-        reg = s.get("regional", {}).get("legs", {}).get("lean", {})
-        if reg.get("percentile") and reg["percentile"] >= 80:
-            add("legs", "Footballer's legs", f"Leg lean mass: {reg['percentile']}th percentile",
-                f"{reg['lb']:.1f} lb of lean tissue in the legs — top {100 - reg['percentile']}% — while arms sit at the {s['regional']['arms']['lean']['percentile']}th. Fifteen years of football shows up on the scan.", "good")
-
-    def heart_story():
-        if weight.peak_date is None:
-            return
-        load_note = ""
-        if "ctl" in daily:
-            c0, c1 = _mean_window(daily["ctl"], weight.peak_date, 45), _last_window(daily["ctl"], end, 60)
-            if c0 and c1 and c1 > c0 * 1.3:
-                load_note = f" Over the same span training load rose {c1 / c0:.1f}× while eating in a deficit — both commonly push resting HR up and HRV down."
-        for col, name, unit, better in (("rhr", "Resting heart rate", "bpm", "down"), ("vo2max", "VO₂ max", "ml/kg/min", "up"),
-                                        ("hrv", "Heart-rate variability", "ms", "up"), ("walking_speed_kmh", "Walking speed", "km/h", "up")):
-            if col not in daily:
-                continue
-            at_peak = _mean_window(daily[col], weight.peak_date, 45)
-            now = _last_window(daily[col], end, 60)
-            if at_peak is None or now is None:
-                continue
-            delta = now - at_peak
-            good = (delta < 0) if better == "down" else (delta > 0)
-            nd = 2 if col == "walking_speed_kmh" else 1
-            add(f"{col}_change", name, f"{at_peak:.{nd}f} → {now:.{nd}f} {unit}",
-                f"Average around peak weight vs. the last 60 days ({'+' if delta > 0 else ''}{delta:.{nd}f} {unit})." + (load_note if col in ("rhr", "hrv") and not good else ""),
-                "good" if good else "warn")
-
-    def corr_story():
-        top = [c for c in corr if c["metric"] in ("rhr", "vo2max", "walking_speed_kmh", "hrv") and abs(c["r"]) >= 0.4]
-        for c in top[:2]:
-            direction = "rises" if c["per_10lb"] > 0 else "drops"
-            add(f"corr_{c['metric']}", "Weight vs. " + c["label"], f"r = {c['r']:.2f}",
-                f"Across {c['n']} months, every 10 lb of body weight {direction} {c['label']} by {abs(c['per_10lb']):.2f} on average (correlation, not causation).")
-
-    def football_story():
-        if not fb or not fb.get("games"):
-            return
-        add("football_total", "Football", f"{fb['games']} games, {fb['hours']:.0f} hours",
-            f"Tracked since {pd.Timestamp(fb['first_date']):%b %Y}: {fb['km']:,.0f} km covered and {fb['kcal']:,.0f} active kcal burned on the pitch.", "good")
-        if fb["prev_365"]:
-            ratio = fb["last_365"] / fb["prev_365"]
-            add("football_volume", "More football", f"{fb['last_365']} games in the last 12 months",
-                f"vs. {fb['prev_365']} the year before ({ratio:.1f}×). Busiest month: {fb['busiest_month']['games']} games in {pd.Period(fb['busiest_month']['month']):%B %Y}.", "good" if ratio >= 1 else "bad")
-        years = fb["per_year"]
-        if len(years) >= 2:
-            ys = sorted(years)
-            a, b = years[ys[0]], years[ys[-1]]
-            if a.get("km_per_game") and b.get("km_per_game"):
-                add("football_engine", "Bigger engine", f"{a['km_per_game']:.1f} → {b['km_per_game']:.1f} km per game",
-                    f"Average distance per game in {ys[0]} vs {ys[-1]}, with games averaging {b['avg_min']:.0f} minutes now.", "good")
-        if fb.get("gps_games"):
-            ts = fb["records"]["top_speed"]
-            add("football_speed", "Sprinting", f"{fb['top_kmh_median']:.1f} km/h typical top speed",
-                f"From {fb['gps_games']} GPS-tracked games: ~{fb['sprints_per_game']:.0f} sprints (≥21 km/h) and {fb['hsr_m_per_game']:.0f} m of high-speed running per game. Fastest 5-second burst: {ts['value']:.1f} km/h.")
-        st = fb["streak"]
-        if st["longest_weeks"] >= 4:
-            add("football_streak", "Consistency", f"{st['longest_weeks']} straight weeks with football",
-                f"Longest run of consecutive weeks with at least one game{'; currently on ' + str(st['current_weeks']) + ' weeks' if st['current_weeks'] > 1 else ''}.", "good")
-
-    def phases_story():
-        p = {r["key"]: r for r in phases}
-        if "desk" in p and "cut" in p and p["desk"].get("steps") and p["cut"].get("steps"):
-            d, c = p["desk"], p["cut"]
-            add("phase_activity", "What changed", f"{d['workout_hours_per_week']:.1f} → {c['workout_hours_per_week']:.1f} training hrs/week",
-                f"Desk years vs. the cut: steps {d['steps']:,.0f} → {c['steps']:,.0f}/day, active energy {d['active_kcal']:.0f} → {c['active_kcal']:.0f} kcal/day, football {d['football_per_month']:.1f} → {c['football_per_month']:.1f} games/month.", "good")
-
-    def energy_story():
-        if not dexa_scans or "basal_kcal" not in daily:
-            return
-        rmr = (dexa_scans[-1].get("rmr") or {})
-        if not rmr:
-            return
-        dexa_rmr = max(rmr.values())
-        watch = _last_window(daily["basal_kcal"].where(daily["basal_kcal"] > 1000), end, 60)
-        bmr = _last_window(daily["bmr_est"], end, 30) if "bmr_est" in daily else None
-        if watch:
-            add("rmr", "Metabolism", f"~{dexa_rmr:,} kcal/day at rest",
-                f"DEXA-based RMR (lean-mass equation) vs. {watch:,.0f} kcal/day of basal energy from the watch" + (f" and {bmr:,.0f} from Mifflin-St Jeor." if bmr else "."))
-
-    def load_story():
-        if "ctl" not in daily:
-            return
-        ctl = daily["ctl"].dropna()
-        if ctl.empty:
-            return
-        peak_day = ctl.idxmax()
-        add("fitness", "Training load", f"Fitness peaked {peak_day:%b %Y}",
-            f"42-day heart-rate training load (CTL) hit {ctl.max():.0f} on {peak_day:%b %-d, %Y}; it's {ctl.iloc[-1]:.0f} now.")
-
-    def rings_story():
-        if "all_rings_pct" not in monthly:
-            return
-        p = {r["key"]: r for r in phases}
-        if "cut" not in p:
-            return
-        m = monthly.copy()
-        m.index = m.index.to_timestamp()
-        cut = m[m.index >= pd.Timestamp(p["cut"]["start"])]["exercise_closed_pct"].mean()
-        before = m[m.index < pd.Timestamp(p["cut"]["start"])]["exercise_closed_pct"].mean()
-        if np.isfinite(cut) and np.isfinite(before):
-            add("rings", "Exercise ring", f"Closed {cut:.0f}% of days",
-                f"During the cut, vs. {before:.0f}% before it.", "good" if cut > before else "neutral")
-
-    def intake_story():
-        if "implied_intake_kcal" not in monthly or weight.peak_date is None:
-            return
-        m = monthly.copy()
-        m.index = m.index.to_timestamp()
-        cut = m[m.index > weight.peak_date].dropna(subset=["implied_intake_kcal"])
-        desk = m[(m.index <= weight.peak_date) & (m.index >= pd.Timestamp("2020-08-01"))].dropna(subset=["implied_intake_kcal"])
-        if len(cut) >= 3 and len(desk) >= 6:
-            add("intake", "Energy balance (estimated)", f"~{cut['tdee_est'].mean() - cut['implied_intake_kcal'].mean():,.0f} kcal/day deficit",
-                f"Watch-measured expenditure averaged {cut['tdee_est'].mean():,.0f} kcal/day during the cut. Back-solving from the weight curve (3,500 kcal/lb) puts intake near {cut['implied_intake_kcal'].mean():,.0f} kcal/day, vs. ~{desk['implied_intake_kcal'].mean():,.0f} during the desk years. Rough model — watch calorie estimates run high.")
-
-    def habits_story():
-        w = ctx["workouts"]
-        fbw = w[w["category"] == "Football"]
-        if fbw.empty:
-            return
-        days = ["Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"]
-        wd = fbw["weekday"].value_counts()
-        evening = (fbw["hour"] >= 17).mean() * 100
-        add("habits", "When I play", f"{days[int(wd.idxmax())]}, mostly after work",
-            f"{wd.max() / len(fbw) * 100:.0f}% of games fall on {days[int(wd.idxmax())]}; {evening:.0f}% kick off at 5 pm or later.")
-
-    for fn in (weight_story, dexa_story, football_story, habits_story, phases_story, intake_story, heart_story, corr_story, energy_story, load_story, rings_story):
-        guard(fn)
-    return out
 
 
 # ---------------------------------------------------------------- main
@@ -483,5 +286,5 @@ def run(apple_src: ExportSource, strava_src: ExportSource | None, root: Path, ou
     problems = privacy.audit(out_dir)
     if problems:
         raise SystemExit("privacy audit failed:\n  " + "\n  ".join(problems))
-    log(f"✓ wrote {len(list(out_dir.glob('*.json')))} files to {out_dir} (privacy audit passed)")
+    log(f"wrote {len(list(out_dir.glob('*.json')))} files to {out_dir} (privacy audit passed)")
     return summary
