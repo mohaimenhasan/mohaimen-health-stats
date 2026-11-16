@@ -28,13 +28,17 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-      - run: node --test tests/test_fitness.mjs
+      - run: node --test tests/test_fitness.mjs worker/test/worker.test.mjs
       - name: Decrypt site data (data.enc -> site/data)
         env:
           DATA_KEY: ${{ secrets.DATA_KEY }}
         run: python -m healthstats.vault open --only site/data
       - name: Privacy audit (blocks deploy if anything personal slipped in)
         run: python -m healthstats.privacy site config
+      - name: Seal site data for the access Worker (site/data -> site/fitness.enc)
+        run: |
+          python -m healthstats.vault pack
+          rm -rf site/data
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

@@ -1,0 +1,28 @@
+// Deployed as https://fitness.mohaimenhasan.workers.dev (Cloudflare Access protects everything except /api/*).
+// Secrets (wrangler secret put): CF_API_TOKEN, OWNER_EMAIL, SESSION_SECRET, SITE_PRIVATE_KEY, TURNSTILE_SECRET
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fitness",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-11-16",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "invocation_logs": true },
+    "traces": { "enabled": true }
+  },
+  "kv_namespaces": [{ "binding": "KV", "id": "c8017e197b874078a4181740fcfa2fc0" }],
+  "vars": {
+    "ACCOUNT_ID": "2fb772d8333f4e4dc614e3f2d9ae7aeb",
+    "TEAM_DOMAIN": "mohaimen-fitness.cloudflareaccess.com",
+    "ACCESS_AUD": "a532dd8b6e5f658ca30ea218729043bd86b73b4836c9b2a30b30754b20ef1270",
+    "LIST_ID": "135bb0e6-8353-4c8b-9301-6b4fb1fe8861",
+    "SITE_ORIGIN": "https://mohaimenhasan.github.io",
+    "SITE_PATH": "/mohaimen-health-stats/",
+    "BUNDLE_URL": "https://mohaimenhasan.github.io/mohaimen-health-stats/fitness.enc",
+    "GITHUB_REPO": "mohaimenhasan/mohaimen-health-stats",
+    "GITHUB_REPO_ID": "1458136545",
+    "NOTIFY_WORKFLOW_REF": "mohaimenhasan/mohaimen-health-stats/.github/workflows/access-requests.yml@refs/heads/main"
+  }
+}

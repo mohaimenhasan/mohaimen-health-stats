@@ -1,5 +1,5 @@
-import { sportLabel, sportOptions, selectWorkouts, trainingLoad, trainingSummary, recoveryPairs, linearFit } from "./fitness.mjs?v=my-fitness-2";
-import { helpButton, initHelp, renderHelp } from "./help.mjs?v=my-fitness-2";
+import { sportLabel, sportOptions, selectWorkouts, trainingLoad, trainingSummary, recoveryPairs, linearFit } from "./fitness.mjs?v=my-fitness-3";
+import { helpButton, initHelp, renderHelp } from "./help.mjs?v=my-fitness-3";
 
 /* My Fitness: date-based health measurements and sport-filtered workouts. */
 (() => {
@@ -143,14 +143,53 @@ import { helpButton, initHelp, renderHelp } from "./help.mjs?v=my-fitness-2";
 
   // ---------------------------------------------------------------- data
   let D;
+  // Deployed: data comes from the Worker for signed-in viewers. Local dev: generated files in site/data.
+  const API = document.querySelector('meta[name="fitness-api"]')?.content;
+  const LOCAL = ["localhost", "127.0.0.1"].includes(location.hostname);
+  const TOKEN_KEY = "fitness-token";
+  class AuthError extends Error {}
+
+  function takeToken() {
+    const m = /^#auth=([\w-]+\.[\w-]+\.[\w-]+)$/.exec(location.hash);
+    if (!m) return;
+    localStorage.setItem(TOKEN_KEY, m[1]);
+    history.replaceState(null, "", `${location.pathname}${location.search}`);
+  }
+
+  function sessionToken() {
+    const t = localStorage.getItem(TOKEN_KEY);
+    try {
+      const p = JSON.parse(atob(t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+      if (p.x * 1000 > Date.now() + 60_000) return t;
+    } catch { /* missing or malformed */ }
+    localStorage.removeItem(TOKEN_KEY);
+    return null;
+  }
+
+  async function fetchData() {
+    if (LOCAL || !API) {
+      const out = {};
+      await Promise.all(["summary", "daily", "workouts", "weight", "dexa"].map(async (n) => {
+        const r = await fetch(`data/${n}.json`, { cache: "no-cache" });
+        if (!r.ok) throw new Error(`data/${n}.json: HTTP ${r.status}`);
+        out[n] = await r.json();
+      }));
+      return out;
+    }
+    const token = sessionToken();
+    if (!token) throw new AuthError();
+    const r = await fetch(`${API}/api/data`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+    if (r.status === 401 || r.status === 403) {
+      localStorage.removeItem(TOKEN_KEY);
+      throw new AuthError(r.status === 403 ? "Access removed" : "Session expired");
+    }
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    $("sign-out").hidden = false;
+    return r.json();
+  }
+
   async function load() {
-    const names = ["summary", "daily", "workouts", "weight", "dexa"];
-    const out = {};
-    await Promise.all(names.map(async (n) => {
-      const r = await fetch(`data/${n}.json`, { cache: "no-cache" });
-      if (!r.ok) throw new Error(`data/${n}.json: HTTP ${r.status}`);
-      out[n] = await r.json();
-    }));
+    const out = await fetchData();
     const wk = out.workouts;
     out.W = wk.rows.map((r) => Object.fromEntries(wk.columns.map((c, i) => [c, r[i]])));
     out.sports = sportOptions(out.W);
@@ -737,7 +776,7 @@ import { helpButton, initHelp, renderHelp } from "./help.mjs?v=my-fitness-2";
     $("error").hidden = true;
     $("training-view").hidden = view !== "training";
     $("body-view").hidden = view !== "body";
-    document.querySelectorAll("main section, main .card").forEach((el) => { el.hidden = false; });
+    document.querySelectorAll(":is(#training-view, #body-view) :is(section, .card)").forEach((el) => { el.hidden = false; });
     if (view === "training") {
       safe("training", () => renderTraining(R, A));
       safe("load", () => renderLoad(R));
@@ -855,13 +894,80 @@ import { helpButton, initHelp, renderHelp } from "./help.mjs?v=my-fitness-2";
   const topbar = $("topbar");
   new ResizeObserver(() => document.documentElement.style.setProperty("--topbar-h", `${topbar.offsetHeight}px`)).observe(topbar);
 
+  // ---------------------------------------------------------------- access gate
+  function showGate(reason = "") {
+    document.body.classList.add("gated");
+    $("gate").hidden = false;
+    $("sign-out").hidden = true;
+    $("gate-status").textContent = reason;
+    $("sign-in").href = `${API}/auth/login?return=${encodeURIComponent(`${location.origin}${location.pathname}${location.search}`)}`;
+    initRequestForm();
+  }
+
+  function initRequestForm() {
+    const form = $("request-form"), status = $("req-status"), submit = $("req-submit");
+    let challenge = null, widget;
+    const say = (msg, tone = "") => { status.textContent = msg; status.dataset.tone = tone; };
+    const script = document.createElement("script");
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.async = true;
+    script.onload = () => {
+      widget = window.turnstile.render("#turnstile", {
+        sitekey: document.querySelector('meta[name="turnstile-sitekey"]').content,
+        action: "request-access", theme: "dark", size: "flexible",
+        callback: (t) => { challenge = t; },
+        "expired-callback": () => { challenge = null; },
+        "error-callback": () => { challenge = null; say("Verification failed", "error"); },
+      });
+    };
+    script.onerror = () => say("Verification unavailable", "error");
+    document.head.append(script);
+
+    form.addEventListener("input", (e) => e.target.removeAttribute("aria-invalid"));
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const invalid = [$("req-name"), $("req-email")].filter((el) => !el.value.trim() || !el.checkValidity());
+      invalid.forEach((el) => el.setAttribute("aria-invalid", "true"));
+      if (invalid.length) {
+        say(invalid[0].id === "req-email" ? "Valid email required" : "Name required", "error");
+        return invalid[0].focus();
+      }
+      if (!challenge) return say("Verification pending", "error");
+      submit.disabled = true;
+      say("Sending");
+      try {
+        const r = await fetch(`${API}/api/request`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: $("req-name").value, email: $("req-email").value, note: $("req-note").value, turnstile: challenge }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        form.reset();
+        say("Request sent", "ok");
+      } catch {
+        say("Request failed", "error");
+      } finally {
+        challenge = null;
+        if (widget !== undefined) window.turnstile.reset(widget);
+        submit.disabled = false;
+      }
+    });
+  }
+
+  $("sign-out").addEventListener("click", () => {
+    localStorage.removeItem(TOKEN_KEY);
+    location.replace(`${location.pathname}${location.search}`);
+  });
+
   // ---------------------------------------------------------------- boot
+  takeToken();
   initHelp();
   $("range").setAttribute("aria-busy", "true");
   load().then((data) => {
     D = data;
     initRange();
   }).catch((e) => {
+    if (e instanceof AuthError) return showGate(e.message);
     console.error(e);
     const el = $("error");
     el.hidden = false;

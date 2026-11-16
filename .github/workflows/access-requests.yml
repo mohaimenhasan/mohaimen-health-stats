@@ -1,0 +1,67 @@
+name: Access requests
+
+# Polls the access Worker for new access requests and @mentions the owner on a
+# tracking issue. The Worker only answers this workflow (GitHub OIDC token bound
+# to this repo, file and branch) and only with counts: no names or emails ever
+# reach this public repository or its logs.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  id-token: write
+
+concurrency:
+  group: access-requests
+  cancel-in-progress: false
+
+env:
+  API: https://fitness.mohaimenhasan.workers.dev
+  OWNER: mohaimenhasan
+  LABEL: access-requests
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check and notify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          oidc=$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=fitness-notify" | jq -r .value)
+          echo "::add-mask::$oidc"
+          status=$(curl -sSf -H "Authorization: Bearer $oidc" "$API/api/notify")
+          pending=$(jq -r .pending <<<"$status")
+          fresh=$(jq -r .fresh <<<"$status")
+          cursor=$(jq -r .cursor <<<"$status")
+          echo "pending=$pending fresh=$fresh"
+
+          issue=$(gh issue list --label "$LABEL" --state all --limit 1 --json number,state \
+            --jq '.[0] | select(.) | "\(.number) \(.state)"')
+          number=${issue%% *}
+          state=${issue##* }
+
+          if [ "$fresh" -gt 0 ]; then
+            gh label create "$LABEL" --color 0e8a16 --description "Dashboard access requests" --force >/dev/null
+            if [ -z "$issue" ]; then
+              url=$(gh issue create --title "Access requests" --label "$LABEL" \
+                --body "Review: $API/auth/admin")
+              number=${url##*/}
+            elif [ "$state" = "CLOSED" ]; then
+              gh issue reopen "$number" >/dev/null
+            fi
+            noun=request; [ "$fresh" -eq 1 ] || noun=requests
+            gh issue comment "$number" --body "@$OWNER $fresh new access $noun · $pending pending · $API/auth/admin" >/dev/null
+            curl -sSf -X POST -H "Authorization: Bearer $oidc" -H "Content-Type: application/json" \
+              --data "$(jq -nc --arg c "$cursor" '{cursor: $c}')" "$API/api/notify" >/dev/null
+          elif [ "$pending" -eq 0 ] && [ "${state:-}" = "OPEN" ]; then
+            gh issue close "$number" --reason completed >/dev/null
+          fi

@@ -20,6 +20,8 @@ node_modules/
 
 # Generated / personal data lives only in the encrypted data.enc
 site/data/
+site/fitness.enc
 config/weight_log.csv
 config/dexa/
 .data-key
+.wrangler/

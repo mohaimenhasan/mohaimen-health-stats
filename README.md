@@ -4,29 +4,50 @@ A visualization-only dashboard built from Apple Health and Strava exports, plus 
 
 Date presets and custom dates apply across both views. The sport filter controls training metrics; daily health measurements remain date-based. Views, dates and sports persist in the URL. Info buttons show definitions, missing-data rules and estimates on hover, keyboard focus or tap; clicking pins them open.
 
-**Live site:** https://mohaimenhasan.github.io/mohaimen-health-stats/
+**Live site:** https://mohaimenhasan.github.io/mohaimen-health-stats/ (sign-in required; anyone can request access from the sign-in page)
 
 ## How it works
 
 ```
 inbox/ (gitignored)                      healthstats/ (Python)              site/ (GitHub Pages)
 ├─ Apple export ───────────────────────┐  parse → merge → analyse →         ├─ index.html, app.js (ECharts)
-├─ Strava export ─────────────────────┼─► privacy audit ───────────────►  └─ data/*.json (gitignored)
-└─ dexa_links.txt ────────────────────┘
+├─ Strava export ─────────────────────┼─► privacy audit ───────────────►  ├─ data/*.json (local only)
+└─ dexa_links.txt ────────────────────┘                                     └─ fitness.enc (deployed)
 config/  profile.json, weight_log.csv + dexa/ (gitignored)
 data.enc  encrypted bundle of site/data, weight_log.csv and dexa/ (the only copy in git)
+worker/   Cloudflare Worker: sign-in handoff, decrypts fitness.enc for approved viewers, access requests
 ```
 
 1. `python -m healthstats` finds the newest Apple and Strava export in `inbox/`. Each can be a zip or an unzipped folder. It writes JSON files to `site/data/`.
 2. A privacy audit scans generated files and aborts if it finds an email, GPS coordinates, a DEXA share link, a birth date or a phone number.
 3. `python -m healthstats.vault seal` encrypts `site/data/`, `config/weight_log.csv` and `config/dexa/` into `data.enc` (Fernet, key in the gitignored `.data-key`).
-4. Pushing to `main` triggers `.github/workflows/pages.yml`. It runs the tests, decrypts `site/data/` with the `DATA_KEY` repo secret, runs the audit and deploys `site/`. The Pages artifact is kept for 1 day.
+4. Pushing to `main` triggers `.github/workflows/pages.yml`. It runs the tests, decrypts `site/data/` with the `DATA_KEY` repo secret and runs the audit. `python -m healthstats.vault pack` then seals the site data into `site/fitness.enc` for the Worker's public key (`config/site-pubkey.pem`), `site/data/` is deleted and `site/` is deployed. Neither the Pages site nor its artifact contains readable data. The artifact is kept for 1 day.
+5. The Worker fetches `fitness.enc`, decrypts it with its private key and returns the data only to signed-in, approved viewers. New data appears within about 15 minutes of a deploy (Pages CDN plus a 5-minute Worker cache).
 
 ## Data access
 
 - **Repository:** no readable personal data. Generated data and personal inputs exist only inside `data.enc`, and earlier readable versions were removed from `main`'s history.
 - **Key:** `.data-key` (local, gitignored) and the `DATA_KEY` Actions secret. Keep a backup of `.data-key`; without it `data.enc` cannot be decrypted.
-- **Live site:** the charts are drawn in the browser from `data/*.json`, so anyone visiting the site can download that JSON. Encryption protects the repo, not the published site.
+- **Live site:** GitHub Pages serves only the page code and `fitness.enc`. The data is decrypted by the Worker and sent only to approved viewers, who can still see (and save) whatever their browser receives.
+
+## Access
+
+Sign-in uses [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/) (Zero Trust free plan, up to 50 users) in front of the Worker at `https://fitness.mohaimenhasan.workers.dev`.
+
+1. **Sign in:** the page's *Continue* button goes to `/auth/login` on the Worker. Access asks for an email and sends a one-time code (or uses Google, if added). The Worker checks the Access JWT, confirms the email is the owner or approved, and redirects back to the site with a 7-day session token in the URL fragment. The page stores it and removes it from the URL.
+2. **Request access:** the form on the sign-in page posts name, email and an optional note to `/api/request`, protected by [Turnstile](https://developers.cloudflare.com/turnstile/). Requests are kept in Workers KV for 30 days.
+3. **Notification:** `.github/workflows/access-requests.yml` runs every 15 minutes. It authenticates to the Worker with a GitHub OIDC token that only this workflow on `main` can mint, gets counts only (no names or emails), and @mentions the owner on an *Access requests* issue. The issue closes when nothing is pending. GitHub disables scheduled workflows after 60 days without repository activity; re-enable it in the Actions tab if that happens.
+4. **Approve:** `https://fitness.mohaimenhasan.workers.dev/auth/admin` (owner only) lists pending requests. *Approve* adds the email to the Zero Trust list used by the Access policy and to KV; *Send link* opens a pre-filled email with the site link. *Remove* revokes access, and the viewer's next page load shows the sign-in page.
+
+**Add Google sign-in (optional).** In Google Cloud, create an OAuth client (*Web application*) with JavaScript origin `https://mohaimen-fitness.cloudflareaccess.com` and redirect URI `https://mohaimen-fitness.cloudflareaccess.com/cdn-cgi/access/callback`. Then add it under Zero Trust → Integrations → Identity providers → Google ([guide](https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/google/)). The Access app accepts all configured identity providers, so no other change is needed.
+
+**Deploy the Worker** (after changing `worker/`):
+
+```sh
+cd worker && npx wrangler deploy
+```
+
+Secrets (set once with `npx wrangler secret put <NAME>`): `OWNER_EMAIL`, `SESSION_SECRET`, `SITE_PRIVATE_KEY` (private half of `config/site-pubkey.pem`), `TURNSTILE_SECRET`, `CF_API_TOKEN` (Zero Trust write, used to edit the viewer list). Rotating `SESSION_SECRET` signs everyone out.
 
 ## Updating the site
 
@@ -54,8 +75,8 @@ python3.13 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m healthstats.vault open   # restore site/data and config inputs (needs .data-key or DATA_KEY)
 .venv/bin/python -m healthstats          # rebuild data (~20 s cold; parsed Apple data is cached in .cache/)
 .venv/bin/python -m pytest -q tests      # unit tests on synthetic data
-node --test tests/test_fitness.mjs       # sport filtering and training-load calculations
-python3 -m http.server -d site 8000      # preview at http://localhost:8000
+node --test tests/test_fitness.mjs worker/test/worker.test.mjs   # sport filters, training load, Worker auth
+python3 -m http.server -d site 8000      # preview at http://localhost:8000 (reads site/data, no sign-in)
 ```
 
 | Module | Role |
@@ -70,7 +91,7 @@ python3 -m http.server -d site 8000      # preview at http://localhost:8000
 | `dexa.py` | BodySpec DEXA fetch and normalisation |
 | `build.py` | Orchestrates the pipeline and writes aggregate JSON |
 | `privacy.py` | Final scan of generated files for selected identifiers |
-| `vault.py` | Encrypts and decrypts the data bundle `data.enc` |
+| `vault.py` | Encrypts and decrypts `data.enc`; `pack` seals site data into `site/fitness.enc` for the Worker |
 
 The interface uses the project skills in `.agents/skills/`, installed with `npx skills add`; `npx ui-skills` was used to review the UI guidance. The `premium-frontend-ui` skill from `github/awesome-copilot` is also installed. Dashboard interactions retain native controls and reduced-motion support rather than adding decorative animation.
 
@@ -94,4 +115,6 @@ The interface uses the project skills in `.agents/skills/`, installed with `npx 
 
 - Raw exports (`inbox/`, `*.zip`, `*.xml`, `*.gpx`, `*.fit`) are gitignored.
 - Generated data, the weight log and DEXA results are committed only as `data.enc`.
-- The privacy scan checks generated files for selected identifiers. It does not stop visitors from downloading the data the live site displays.
+- The deployed site holds only `fitness.enc`; readable data is served by the Worker to approved, signed-in viewers.
+- The privacy scan checks generated files for selected identifiers before they are sealed.
+- Access-request details stay in Workers KV. The repository, issue and Actions logs only ever see counts.

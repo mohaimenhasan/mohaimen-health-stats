@@ -1,7 +1,9 @@
 """Unit tests on synthetic data only — no personal exports needed."""
 from __future__ import annotations
 
+import gzip
 import io
+import json
 import zipfile
 
 import numpy as np
@@ -210,6 +212,27 @@ def test_vault_round_trip_and_partial_open(tmp_path):
     assert vault.open_vault(dst, key, only="site/data") == ["site/data/daily.json"]
     assert (dst / "site/data/daily.json").read_text() == '{"weight_lb":[150]}'
     assert not (dst / "config").exists()
+
+
+def test_pack_encrypts_site_data_for_the_worker_key(tmp_path):
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding, rsa
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    (tmp_path / "config").mkdir()
+    (tmp_path / vault.PUBKEY).write_bytes(private.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo))
+    (tmp_path / "site/data").mkdir(parents=True)
+    for n in vault.SITE_DATA:
+        (tmp_path / f"site/data/{n}.json").write_text(json.dumps({"name": n, "weight_lb": [150.5]}))
+
+    blob = vault.pack(tmp_path).read_bytes()
+    assert blob[:4] == vault.BUNDLE_MAGIC and b"weight_lb" not in blob
+    n = int.from_bytes(blob[4:6], "big")
+    key = private.decrypt(blob[6:6 + n], padding.OAEP(mgf=padding.MGF1(hashes.SHA256()), algorithm=hashes.SHA256(), label=None))
+    plain = AESGCM(key).decrypt(blob[6 + n:18 + n], blob[18 + n:], vault.BUNDLE_MAGIC)
+    assert json.loads(gzip.decompress(plain)) == {n: {"name": n, "weight_lb": [150.5]} for n in vault.SITE_DATA}
 
 
 def test_vault_rejects_wrong_key(tmp_path):
