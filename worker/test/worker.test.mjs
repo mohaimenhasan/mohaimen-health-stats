@@ -212,6 +212,7 @@ describe("/auth/admin", () => {
     assert.equal((await call("/auth/admin", viewer)).status, 403);
     const res = await call("/auth/admin", await owner());
     assert.equal(res.status, 200);
+    assert.equal(res.headers.get("Referrer-Policy"), "same-origin", "browser form posts must preserve Origin");
     assert.match(res.headers.get("Content-Security-Policy"), /default-src 'none'/);
     const html = await res.text();
     assert.ok(!html.includes("<script>"));
@@ -223,7 +224,18 @@ describe("/auth/admin", () => {
     const reqKey = `req:${Buffer.from(await crypto.subtle.digest("SHA-256", enc.encode("sam@example.com"))).toString("hex")}`;
     await env.KV.put(reqKey, "1", { metadata: { e: "sam@example.com", n: "Sam", t: "", at: "2026-11-01T00:00:00Z", s: 1 } });
 
-    assert.equal((await postForm({ action: "approve", email: "sam@example.com" }, "https://evil.example")).status, 403);
+    for (const origin of ["https://evil.example", "null", ""]) {
+      assert.equal((await postForm({ action: "approve", email: "sam@example.com" }, origin)).status, 403);
+    }
+    assert.equal((await call("/auth/admin", await owner({
+      method: "POST", body: new URLSearchParams({ action: "approve", email: "sam@example.com" }),
+    }))).status, 403);
+    assert.equal((await call("/auth/admin", {
+      method: "POST", headers: { Origin: WORKER, "Cf-Access-Jwt-Assertion": await accessJwt("friend@example.com") },
+      body: new URLSearchParams({ action: "approve", email: "sam@example.com" }),
+    })).status, 403);
+    assert.equal(calls.some((c) => c.method === "PATCH"), false);
+    assert.equal(await env.KV.get("user:sam@example.com"), null);
     assert.equal((await postForm({ action: "approve", email: OWNER })).status, 400);
     const res = await postForm({ action: "approve", email: "Sam@example.com" });
     assert.equal(res.status, 303);

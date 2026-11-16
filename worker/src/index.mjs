@@ -120,7 +120,8 @@ async function admin(request, env, url) {
   const approved = users.keys.map((k) => ({ email: k.name.slice(5), name: k.metadata?.n || "", at: k.metadata?.at }))
     .sort((a, b) => String(b.at).localeCompare(String(a.at)));
   return new Response(adminPage({ pending, users: approved, siteUrl: siteUrl(env) }), {
-    headers: { ...BASE_HEADERS, "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": ADMIN_CSP, "X-Frame-Options": "DENY" },
+    // no-referrer makes browser form POSTs send Origin: null, failing the same-origin check.
+    headers: { ...BASE_HEADERS, "Referrer-Policy": "same-origin", "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": ADMIN_CSP, "X-Frame-Options": "DENY" },
   });
 }
 
