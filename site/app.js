@@ -1,5 +1,5 @@
-import { sportLabel, sportOptions, selectWorkouts, trainingLoad, trainingSummary, recoveryPairs, linearFit } from "./fitness.mjs?v=my-fitness-4";
-import { helpButton, initHelp, renderHelp } from "./help.mjs?v=my-fitness-4";
+import { sportLabel, sportOptions, selectWorkouts, trainingLoad, trainingSummary, recoveryPairs, linearFit } from "./fitness.mjs?v=my-fitness-5";
+import { helpButton, initHelp, renderHelp } from "./help.mjs?v=my-fitness-5";
 
 /* My Fitness: date-based health measurements and sport-filtered workouts. */
 (() => {
@@ -184,8 +184,11 @@ import { helpButton, initHelp, renderHelp } from "./help.mjs?v=my-fitness-4";
       throw new AuthError(r.status === 403 ? "Access removed" : "Session expired");
     }
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const out = await r.json();
     $("sign-out").hidden = false;
-    return r.json();
+    $("admin-link").href = `${API}/auth/admin`;
+    $("admin-link").hidden = r.headers.get("X-Fitness-Role") !== "owner";
+    return out;
   }
 
   async function load() {
@@ -899,6 +902,7 @@ import { helpButton, initHelp, renderHelp } from "./help.mjs?v=my-fitness-4";
     document.body.classList.add("gated");
     $("gate").hidden = false;
     $("sign-out").hidden = true;
+    $("admin-link").hidden = true;
     $("gate-status").textContent = reason;
     $("sign-in").href = `${API}/auth/login?return=${encodeURIComponent(`${location.origin}${location.pathname}${location.search}`)}`;
     initRequestForm();

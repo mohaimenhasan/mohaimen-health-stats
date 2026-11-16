@@ -144,6 +144,7 @@ describe("/api/data", () => {
   test("needs a session token and an approved email", async () => {
     const anon = await call("/api/data", { headers: { Origin: SITE } });
     assert.equal(anon.status, 401);
+    assert.equal(anon.headers.get("X-Fitness-Role"), null);
     assert.equal(anon.headers.get("Access-Control-Allow-Origin"), SITE);
     assert.ok(!calls.some((c) => c.url === env.BUNDLE_URL), "bundle is not fetched before auth");
 
@@ -154,10 +155,27 @@ describe("/api/data", () => {
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("Content-Encoding"), "gzip");
     assert.equal(res.headers.get("Cache-Control"), "private, no-store");
+    assert.equal(res.headers.get("X-Fitness-Role"), "viewer");
+    assert.equal(res.headers.get("Access-Control-Expose-Headers"), "X-Fitness-Role");
     assert.deepEqual(JSON.parse(gunzipSync(Buffer.from(await res.arrayBuffer()))), BUNDLE);
 
     await env.KV.delete("user:friend@example.com"); // revoked immediately
     assert.equal((await call("/api/data", { headers: { Authorization: `Bearer ${viewer}` } })).status, 403);
+  });
+
+  test("owner navigation is based on the verified session, including after a cached viewer response", async () => {
+    const viewer = await signSession(env.SESSION_SECRET, "friend@example.com", 600);
+    await env.KV.put("user:friend@example.com", "1");
+    await call("/api/data", { headers: { Authorization: `Bearer ${viewer}`, Origin: SITE } });
+    const owner = await signSession(env.SESSION_SECRET, OWNER, 600);
+    const res = await call("/api/data", { headers: { Authorization: `Bearer ${owner}`, Origin: SITE } });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("X-Fitness-Role"), "owner");
+    assert.equal(res.headers.get("Access-Control-Expose-Headers"), "X-Fitness-Role");
+    assert.equal(res.headers.get("Cache-Control"), "private, no-store");
+
+    const next = await call("/api/data", { headers: { Authorization: `Bearer ${viewer}`, Origin: SITE, "X-Fitness-Role": "owner" } });
+    assert.equal(next.headers.get("X-Fitness-Role"), "viewer");
   });
 
   test("CORS only for the dashboard origin", async () => {
@@ -166,6 +184,7 @@ describe("/api/data", () => {
     assert.match(pre.headers.get("Access-Control-Allow-Headers"), /Authorization/);
     const evil = await call("/api/data", { method: "OPTIONS", headers: { Origin: "https://evil.example" } });
     assert.equal(evil.headers.get("Access-Control-Allow-Origin"), null);
+    assert.equal(evil.headers.get("Access-Control-Expose-Headers"), null);
   });
 });
 

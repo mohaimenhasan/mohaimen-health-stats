@@ -168,7 +168,10 @@ async function revoke(env, email) {
 
 function withCors(res, request, env) {
   res.headers.append("Vary", "Origin");
-  if (request.headers.get("Origin") === env.SITE_ORIGIN) res.headers.set("Access-Control-Allow-Origin", env.SITE_ORIGIN);
+  if (request.headers.get("Origin") === env.SITE_ORIGIN) {
+    res.headers.set("Access-Control-Allow-Origin", env.SITE_ORIGIN);
+    res.headers.set("Access-Control-Expose-Headers", "X-Fitness-Role");
+  }
   return res;
 }
 
@@ -195,7 +198,10 @@ async function data(request, env) {
   if (!(await isAllowed(env, session.email))) return json({ error: "revoked" }, 403);
   const bytes = await siteBundle(env);
   return new Response(bytes.slice(), {
-    headers: { ...BASE_HEADERS, "Content-Type": "application/json", "Content-Encoding": "gzip", "Cache-Control": "private, no-store" },
+    headers: {
+      ...BASE_HEADERS, "Content-Type": "application/json", "Content-Encoding": "gzip", "Cache-Control": "private, no-store",
+      "X-Fitness-Role": session.email === ownerEmail(env) ? "owner" : "viewer",
+    },
     encodeBody: "manual", // body is already gzip
   });
 }

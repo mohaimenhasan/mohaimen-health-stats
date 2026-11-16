@@ -11,8 +11,8 @@
   <meta name="theme-color" content="#0b0f14">
   <meta name="fitness-api" content="https://fitness.mohaimenhasan.workers.dev">
   <meta name="turnstile-sitekey" content="0x4AAAAAAGD7yEspyGNqEp_N">
-  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=my-fitness-4">
-  <link rel="stylesheet" href="styles.css?v=my-fitness-4">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=my-fitness-5">
+  <link rel="stylesheet" href="styles.css?v=my-fitness-5">
 </head>
 <body>
   <header class="topbar" id="topbar">
@@ -44,7 +44,10 @@
     <nav class="views" aria-label="Dashboard views">
       <button type="button" data-view="training" aria-pressed="true" aria-controls="training-view">Training analysis</button>
       <button type="button" data-view="body" aria-pressed="false" aria-controls="body-view">Body &amp; health</button>
-      <button type="button" class="sign-out" id="sign-out" hidden>Sign out</button>
+      <div class="account-actions">
+        <a id="admin-link" hidden>Admin</a>
+        <button type="button" id="sign-out" hidden>Sign out</button>
+      </div>
     </nav>
   </header>
 
@@ -209,6 +212,6 @@
   </main>
 
   <script src="vendor/echarts.min.js"></script>
-  <script type="module" src="app.js?v=my-fitness-4"></script>
+  <script type="module" src="app.js?v=my-fitness-5"></script>
 </body>
 </html>
