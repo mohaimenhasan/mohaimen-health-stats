@@ -264,4 +264,13 @@ describe("/api/notify", () => {
     const after = await (await call("/api/notify", { headers: auth })).json();
     assert.equal(after.fresh, 1, "request after the cursor stays unacknowledged");
   });
+
+  test("reports whether the site bundle opens", async () => {
+    const auth = { Authorization: `Bearer ${await githubJwt()}` };
+    assert.equal((await (await call("/api/notify", { headers: auth })).json()).data, true);
+    resetCaches();
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => (String(input) === env.BUNDLE_URL ? new Response("", { status: 404 }) : realFetch(input, init));
+    assert.equal((await (await call("/api/notify", { headers: auth })).json()).data, false);
+  });
 });

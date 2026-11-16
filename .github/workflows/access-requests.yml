@@ -1,7 +1,8 @@
 name: Access requests
 
 # Polls the access Worker for new access requests and @mentions the owner on a
-# tracking issue. The Worker only answers this workflow (GitHub OIDC token bound
+# tracking issue. Fails (and GitHub emails the owner) if the Worker cannot open
+# the deployed data bundle. The Worker only answers this workflow (GitHub OIDC token bound
 # to this repo, file and branch) and only with counts: no names or emails ever
 # reach this public repository or its logs.
 
@@ -42,7 +43,8 @@ jobs:
           pending=$(jq -r .pending <<<"$status")
           fresh=$(jq -r .fresh <<<"$status")
           cursor=$(jq -r .cursor <<<"$status")
-          echo "pending=$pending fresh=$fresh"
+          data=$(jq -r .data <<<"$status")
+          echo "pending=$pending fresh=$fresh data=$data"
 
           issue=$(gh issue list --label "$LABEL" --state all --limit 1 --json number,state \
             --jq '.[0] | select(.) | "\(.number) \(.state)"')
@@ -64,4 +66,9 @@ jobs:
               --data "$(jq -nc --arg c "$cursor" '{cursor: $c}')" "$API/api/notify" >/dev/null
           elif [ "$pending" -eq 0 ] && [ "${state:-}" = "OPEN" ]; then
             gh issue close "$number" --reason completed >/dev/null
+          fi
+
+          if [ "$data" != "true" ]; then
+            echo "::error::The Worker could not open site/fitness.enc (key mismatch or missing deploy)"
+            exit 1
           fi

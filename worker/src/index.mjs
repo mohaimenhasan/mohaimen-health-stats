@@ -266,7 +266,10 @@ async function notify(request, env) {
   const { keys } = await env.KV.list({ prefix: "req:" });
   const pending = keys.filter((k) => k.metadata?.e);
   if (request.method === "GET") {
-    return json({ pending: pending.length, fresh: pending.filter((k) => !k.metadata.s).length, cursor: new Date().toISOString() });
+    // Health check for the scheduled workflow: can the deployed bundle be opened with this Worker's key?
+    let data = true;
+    try { await siteBundle(env); } catch (e) { data = false; log("error", "bundle unavailable", { reason: e.message }); }
+    return json({ pending: pending.length, fresh: pending.filter((k) => !k.metadata.s).length, cursor: new Date().toISOString(), data });
   }
   if (request.method !== "POST") return json({ error: "method" }, 405);
   let cursor;

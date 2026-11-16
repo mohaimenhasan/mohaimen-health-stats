@@ -1,5 +1,5 @@
-import { sportLabel, sportOptions, selectWorkouts, trainingLoad, trainingSummary, recoveryPairs, linearFit } from "./fitness.mjs?v=my-fitness-3";
-import { helpButton, initHelp, renderHelp } from "./help.mjs?v=my-fitness-3";
+import { sportLabel, sportOptions, selectWorkouts, trainingLoad, trainingSummary, recoveryPairs, linearFit } from "./fitness.mjs?v=my-fitness-4";
+import { helpButton, initHelp, renderHelp } from "./help.mjs?v=my-fitness-4";
 
 /* My Fitness: date-based health measurements and sport-filtered workouts. */
 (() => {
@@ -905,23 +905,34 @@ import { helpButton, initHelp, renderHelp } from "./help.mjs?v=my-fitness-3";
   }
 
   function initRequestForm() {
-    const form = $("request-form"), status = $("req-status"), submit = $("req-submit");
-    let challenge = null, widget;
+    const form = $("request-form"), status = $("req-status"), submit = $("req-submit"), toggle = $("req-toggle");
+    let challenge = null, widget, loaded = false;
     const say = (msg, tone = "") => { status.textContent = msg; status.dataset.tone = tone; };
-    const script = document.createElement("script");
-    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-    script.async = true;
-    script.onload = () => {
-      widget = window.turnstile.render("#turnstile", {
-        sitekey: document.querySelector('meta[name="turnstile-sitekey"]').content,
-        action: "request-access", theme: "dark", size: "flexible",
-        callback: (t) => { challenge = t; },
-        "expired-callback": () => { challenge = null; },
-        "error-callback": () => { challenge = null; say("Verification failed", "error"); },
-      });
+    const loadChallenge = () => {
+      if (loaded) return;
+      loaded = true;
+      const script = document.createElement("script");
+      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      script.async = true;
+      script.onload = () => {
+        widget = window.turnstile.render("#turnstile", {
+          sitekey: document.querySelector('meta[name="turnstile-sitekey"]').content,
+          action: "request-access", theme: "dark", size: "flexible",
+          callback: (t) => { challenge = t; },
+          "expired-callback": () => { challenge = null; },
+          "error-callback": () => { challenge = null; say("Verification failed", "error"); },
+        });
+      };
+      script.onerror = () => say("Verification unavailable", "error");
+      document.head.append(script);
     };
-    script.onerror = () => say("Verification unavailable", "error");
-    document.head.append(script);
+
+    toggle.addEventListener("click", () => {
+      const open = toggle.getAttribute("aria-expanded") !== "true";
+      toggle.setAttribute("aria-expanded", String(open));
+      form.hidden = !open;
+      if (open) { loadChallenge(); $("req-name").focus(); }
+    });
 
     form.addEventListener("input", (e) => e.target.removeAttribute("aria-invalid"));
     form.addEventListener("submit", async (e) => {

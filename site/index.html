@@ -11,8 +11,8 @@
   <meta name="theme-color" content="#0b0f14">
   <meta name="fitness-api" content="https://fitness.mohaimenhasan.workers.dev">
   <meta name="turnstile-sitekey" content="0x4AAAAAAGD7yEspyGNqEp_N">
-  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=my-fitness-3">
-  <link rel="stylesheet" href="styles.css?v=my-fitness-3">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=my-fitness-4">
+  <link rel="stylesheet" href="styles.css?v=my-fitness-4">
 </head>
 <body>
   <header class="topbar" id="topbar">
@@ -53,25 +53,26 @@
     <p class="sr-only" id="range-status" aria-live="polite"></p>
     <div class="error" id="error" role="alert" hidden></div>
 
-    <section class="gate" id="gate" aria-label="Access" hidden>
+    <section class="gate" id="gate" aria-labelledby="h-gate" hidden>
       <div class="card gate-card">
-        <h2>Sign in</h2>
-        <p class="gate-meta">Approved emails</p>
+        <h2 id="h-gate">Sign in or request access</h2>
         <p class="gate-status" id="gate-status" role="status"></p>
-        <a class="btn primary" id="sign-in" href="#">Continue</a>
+        <div class="gate-actions">
+          <a class="btn primary" id="sign-in" href="#">Sign in</a>
+          <button type="button" class="btn" id="req-toggle" aria-expanded="false" aria-controls="request-form">Request access</button>
+        </div>
+        <form class="gate-form" id="request-form" aria-label="Request access" novalidate hidden>
+          <label for="req-name">Name</label>
+          <input id="req-name" name="name" required maxlength="80" autocomplete="name">
+          <label for="req-email">Email</label>
+          <input id="req-email" name="email" type="email" required maxlength="254" autocomplete="email" spellcheck="false">
+          <label for="req-note">Note <span class="optional">· optional</span></label>
+          <input id="req-note" name="note" maxlength="200" autocomplete="off">
+          <div class="turnstile" id="turnstile"></div>
+          <button type="submit" class="btn primary" id="req-submit">Send request</button>
+          <p class="gate-status" id="req-status" role="status"></p>
+        </form>
       </div>
-      <form class="card gate-card" id="request-form" aria-labelledby="h-request" novalidate>
-        <h2 id="h-request">Request access</h2>
-        <label for="req-name">Name</label>
-        <input id="req-name" name="name" required maxlength="80" autocomplete="name">
-        <label for="req-email">Email</label>
-        <input id="req-email" name="email" type="email" required maxlength="254" autocomplete="email" spellcheck="false">
-        <label for="req-note">Note <span class="optional">· optional</span></label>
-        <input id="req-note" name="note" maxlength="200" autocomplete="off">
-        <div class="turnstile" id="turnstile"></div>
-        <button type="submit" class="btn primary" id="req-submit">Send request</button>
-        <p class="gate-status" id="req-status" role="status"></p>
-      </form>
     </section>
 
     <div id="training-view">
@@ -208,6 +209,6 @@
   </main>
 
   <script src="vendor/echarts.min.js"></script>
-  <script type="module" src="app.js?v=my-fitness-3"></script>
+  <script type="module" src="app.js?v=my-fitness-4"></script>
 </body>
 </html>

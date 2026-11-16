@@ -139,31 +139,37 @@ tbody tr:hover { background: var(--card-2); }
 
 /* ---------------------------------------------------------------- access gate */
 .gated .topbar, .gated #training-view, .gated #body-view, .gated #error { display: none !important; }
-.gate {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); align-items: start;
-  gap: 14px; max-inline-size: 760px; margin: min(12vh, 96px) auto 0; padding: 0;
-}
-.gate-card { display: flex; flex-direction: column; gap: 8px; padding: 22px; }
-.gate-card h2 { font-size: 18px; margin: 0; }
-.gate-card label { color: var(--muted); font-size: 13px; margin-block-start: 6px; }
-.gate-card input {
+.gate { max-inline-size: 420px; margin: min(18vh, 160px) auto 0; padding: 0; }
+.gate-card { display: flex; flex-direction: column; gap: 14px; padding: clamp(20px, 6vw, 28px); }
+.gate-card h2 { font-size: 20px; margin: 0; text-wrap: balance; }
+.gate-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 10px; }
+.gate-actions .btn { white-space: nowrap; }
+.gate-form { display: flex; flex-direction: column; gap: 8px; padding-block-start: 14px; border-block-start: 1px solid var(--border); }
+.gate-form label { color: var(--muted); font-size: 13px; margin-block-start: 6px; }
+.gate-form input {
   font: inherit; color: var(--text); background: var(--bg);
   border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; min-block-size: 40px;
 }
-.gate-card input[aria-invalid="true"] { border-color: var(--danger); }
+.gate-form input[aria-invalid="true"] { border-color: var(--danger); }
 .optional { color: var(--faint); }
-.gate-meta, .gate-status { margin: 0; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.gate-status { margin: 0; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 .gate-status:empty { display: none; }
 .gate-status[data-tone="error"] { color: var(--danger); }
 .gate-status[data-tone="ok"] { color: var(--text); }
 .turnstile { min-block-size: 65px; margin-block-start: 8px; }
 .btn {
-  display: inline-flex; align-items: center; justify-content: center; margin-block-start: 8px;
-  font: inherit; font-weight: 600; min-block-size: 40px; padding: 8px 16px; border-radius: 8px; cursor: pointer;
-  color: var(--bg); background: var(--accent); border: 1px solid var(--accent);
+  display: inline-flex; align-items: center; justify-content: center;
+  font: inherit; font-weight: 600; min-block-size: 42px; padding: 8px 16px; border-radius: 8px; cursor: pointer;
+  color: var(--text); background: var(--card-2); border: 1px solid var(--border);
+  transition: background-color 120ms ease, border-color 120ms ease;
 }
-.btn:hover { text-decoration: none; background: color-mix(in oklch, var(--accent) 88%, white); }
+.btn:hover { text-decoration: none; border-color: var(--muted); }
+.btn.primary { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+.btn.primary:hover { background: color-mix(in oklch, var(--accent) 88%, white); }
+.btn[aria-expanded="true"] { border-color: var(--accent); }
 .btn:disabled { opacity: 0.6; cursor: progress; }
+.gate-form .btn { margin-block-start: 8px; }
 .views .sign-out { margin-inline-start: auto; }
+@media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
 
 [hidden] { display: none !important; }
